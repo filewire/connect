@@ -70,6 +70,8 @@ foreach ($entry in $densities.GetEnumerator()) {
     $size = $entry.Value
     Save-LauncherAsset $source $size (Join-Path $OutputBase "$folder\ic_launcher_foreground.png") $false
     Save-LauncherAsset $source $size (Join-Path $OutputBase "$folder\ic_launcher_monochrome.png") $true
+    Remove-Item (Join-Path $OutputBase "$folder\ic_launcher_foreground.webp") -Force -ErrorAction SilentlyContinue
+    Remove-Item (Join-Path $OutputBase "$folder\ic_launcher_monochrome.webp") -Force -ErrorAction SilentlyContinue
     Write-Host "Generated $folder ($size px)"
 }
 $source.Dispose()
