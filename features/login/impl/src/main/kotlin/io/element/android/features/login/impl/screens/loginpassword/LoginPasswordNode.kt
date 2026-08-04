@@ -27,6 +27,12 @@ class LoginPasswordNode(
     @Assisted plugins: List<Plugin>,
     presenterFactory: LoginPasswordPresenter.Factory,
 ) : Node(buildContext, plugins = plugins) {
+    interface Callback : Plugin {
+        fun navigateToChangeAccountProvider()
+    }
+
+    private val callback: Callback = callback()
+
     data class Inputs(
         val initialLogin: String,
     ) : NodeInputs
@@ -41,6 +47,7 @@ class LoginPasswordNode(
             state = state,
             modifier = modifier,
             onBackClick = ::navigateUp,
+            onChangeAccountProvider = callback::navigateToChangeAccountProvider,
         )
     }
 }

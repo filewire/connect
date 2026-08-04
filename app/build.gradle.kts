@@ -274,7 +274,7 @@ dependencies {
         "gplayImplementation"(projects.libraries.pushproviders.firebase)
     }
     if (ModulesConfig.pushProvidersConfig.includeUnifiedPush) {
-        implementation(projects.libraries.pushproviders.unifiedpush)
+        "fdroidImplementation"(projects.libraries.pushproviders.unifiedpush)
     }
 
     implementation(libs.appyx.core)

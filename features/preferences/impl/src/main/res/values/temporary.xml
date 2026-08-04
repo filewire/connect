@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?><!--
+  ~ Connect-specific strings (new keys only — do not duplicate localazy.xml keys here).
+  -->
+<resources>
+    <string name="screen_connect_privacy_title">Privacy</string>
+    <string name="screen_connect_privacy_subtitle">Manage privacy, security, and notification preferences.</string>
+</resources>

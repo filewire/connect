@@ -59,14 +59,12 @@ fun PreferencesRootView(
     onLinkNewDeviceClick: () -> Unit,
     onOpenAnalytics: () -> Unit,
     onOpenRageShake: () -> Unit,
-    onOpenLockScreenSettings: () -> Unit,
+    onOpenConnectPrivacy: () -> Unit,
     onOpenAbout: () -> Unit,
     onOpenDeveloperSettings: () -> Unit,
     onOpenAdvancedSettings: () -> Unit,
     onOpenLabs: () -> Unit,
-    onOpenNotificationSettings: () -> Unit,
     onOpenUserProfile: (MatrixUser) -> Unit,
-    onOpenBlockedUsers: () -> Unit,
     onSignOutClick: () -> Unit,
     onDeactivateClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -104,13 +102,11 @@ fun PreferencesRootView(
             state = state,
             onManageAccountClick = onManageAccountClick,
             onLinkNewDeviceClick = onLinkNewDeviceClick,
-            onOpenBlockedUsers = onOpenBlockedUsers
         )
         // 'Manage my app' section
         ManageAppSection(
             state = state,
-            onOpenNotificationSettings = onOpenNotificationSettings,
-            onOpenLockScreenSettings = onOpenLockScreenSettings,
+            onOpenConnectPrivacy = onOpenConnectPrivacy,
             onSecureBackupClick = onSecureBackupClick,
         )
 
@@ -199,19 +195,13 @@ private fun ColumnScope.MultiAccountSection(
 @Composable
 private fun ColumnScope.ManageAppSection(
     state: PreferencesRootState,
-    onOpenNotificationSettings: () -> Unit,
-    onOpenLockScreenSettings: () -> Unit,
+    onOpenConnectPrivacy: () -> Unit,
     onSecureBackupClick: () -> Unit,
 ) {
     ListItem(
-        headlineContent = { Text(stringResource(id = R.string.screen_notification_settings_title)) },
-        leadingContent = ListItemContent.Icon(IconSource.Vector(CompoundIcons.Notifications())),
-        onClick = onOpenNotificationSettings,
-    )
-    ListItem(
-        headlineContent = { Text(stringResource(id = CommonStrings.common_screen_lock)) },
+        headlineContent = { Text(stringResource(id = R.string.screen_connect_privacy_title)) },
         leadingContent = ListItemContent.Icon(IconSource.Vector(CompoundIcons.Lock())),
-        onClick = onOpenLockScreenSettings,
+        onClick = onOpenConnectPrivacy,
     )
     if (state.showSecureBackup) {
         ListItem(
@@ -229,7 +219,6 @@ private fun ColumnScope.ManageAccountSection(
     state: PreferencesRootState,
     onManageAccountClick: (url: String) -> Unit,
     onLinkNewDeviceClick: () -> Unit,
-    onOpenBlockedUsers: () -> Unit,
 ) {
     state.accountManagementUrl?.let { url ->
         ListItem(
@@ -246,15 +235,7 @@ private fun ColumnScope.ManageAccountSection(
             onClick = onLinkNewDeviceClick,
         )
     }
-    if (state.showBlockedUsersItem) {
-        ListItem(
-            headlineContent = { Text(stringResource(id = CommonStrings.common_blocked_users)) },
-            leadingContent = ListItemContent.Icon(IconSource.Vector(CompoundIcons.Block())),
-            onClick = onOpenBlockedUsers,
-            trailingContent = ListItemContent.Text(state.nbOfBlockedUsers.toString()),
-        )
-    }
-    if (state.accountManagementUrl != null || state.showLinkNewDevice || state.showBlockedUsersItem) {
+    if (state.accountManagementUrl != null || state.showLinkNewDevice) {
         HorizontalDivider()
     }
 }
@@ -383,17 +364,12 @@ private fun ContentToPreview(state: PreferencesRootState) {
         onAddAccountClick = {},
         onOpenAnalytics = {},
         onOpenRageShake = {},
-        onOpenDeveloperSettings = {},
-        onOpenAdvancedSettings = {},
-        onOpenLabs = {},
+        onOpenConnectPrivacy = {},
         onOpenAbout = {},
         onSecureBackupClick = {},
         onManageAccountClick = {},
         onLinkNewDeviceClick = {},
-        onOpenNotificationSettings = {},
-        onOpenLockScreenSettings = {},
         onOpenUserProfile = {},
-        onOpenBlockedUsers = {},
         onSignOutClick = {},
         onDeactivateClick = {},
     )

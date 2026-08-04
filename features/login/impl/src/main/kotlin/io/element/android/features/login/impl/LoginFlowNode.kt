@@ -291,11 +291,17 @@ class LoginFlowNode(
             NavTarget.ChangeAccountProvider -> {
                 val callback = object : ChangeAccountProviderNode.Callback {
                     override fun onDone() {
-                        // Go back to the Account Provider screen
-                        val confirmAccountProvider = backstack.elements.value.firstOrNull {
-                            it.key.navTarget is NavTarget.ConfirmAccountProvider
-                        }?.key?.navTarget ?: NavTarget.ConfirmAccountProvider(isAccountCreation = false)
-                        backstack.singleTop(confirmAccountProvider)
+                        val loginPassword = backstack.elements.value.firstOrNull {
+                            it.key.navTarget is NavTarget.LoginPassword
+                        }?.key?.navTarget
+                        if (loginPassword != null) {
+                            backstack.singleTop(loginPassword)
+                        } else {
+                            val confirmAccountProvider = backstack.elements.value.firstOrNull {
+                                it.key.navTarget is NavTarget.ConfirmAccountProvider
+                            }?.key?.navTarget ?: NavTarget.ConfirmAccountProvider(isAccountCreation = false)
+                            backstack.singleTop(confirmAccountProvider)
+                        }
                     }
 
                     override fun navigateToSearchAccountProvider() {
@@ -322,7 +328,12 @@ class LoginFlowNode(
                 val inputs = LoginPasswordNode.Inputs(
                     initialLogin = navTarget.initialLogin,
                 )
-                createNode<LoginPasswordNode>(buildContext, plugins = listOf(inputs))
+                val callback = object : LoginPasswordNode.Callback {
+                    override fun navigateToChangeAccountProvider() {
+                        backstack.push(NavTarget.ChangeAccountProvider)
+                    }
+                }
+                createNode<LoginPasswordNode>(buildContext, plugins = listOf(inputs, callback))
             }
             is NavTarget.CreateAccount -> {
                 val inputs = CreateAccountNode.Inputs(

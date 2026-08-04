@@ -18,6 +18,8 @@ data class OnBoardingState(
     val showDeveloperSettings: Boolean,
     val productionApplicationName: String,
     val defaultAccountProvider: String?,
+    /** Homeserver used when skipping account-provider confirmation (Connect single-server flow). */
+    val signInHomeserverUrl: String?,
     val mustChooseAccountProvider: Boolean,
     val canLoginWithQrCode: Boolean,
     val canCreateAccount: Boolean,
@@ -29,6 +31,6 @@ data class OnBoardingState(
     val eventSink: (OnBoardingEvents) -> Unit,
 ) {
     val submitEnabled: Boolean
-        get() = defaultAccountProvider != null &&
+        get() = (defaultAccountProvider != null || signInHomeserverUrl != null) &&
             (loginModeState.loginMode is AsyncData.Uninitialized || loginModeState.loginMode is AsyncData.Loading)
 }

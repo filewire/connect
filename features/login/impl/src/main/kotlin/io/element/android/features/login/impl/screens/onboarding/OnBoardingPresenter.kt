@@ -20,6 +20,7 @@ import androidx.compose.runtime.setValue
 import dev.zacsweers.metro.Assisted
 import dev.zacsweers.metro.AssistedFactory
 import dev.zacsweers.metro.AssistedInject
+import io.element.android.appconfig.AuthenticationConfig
 import io.element.android.appconfig.OnBoardingConfig
 import io.element.android.features.enterprise.api.EnterpriseService
 import io.element.android.features.enterprise.api.canConnectToAnyHomeserver
@@ -69,6 +70,17 @@ class OnBoardingPresenter(
         }
         val mustChooseAccountProvider = remember {
             !canConnectToAnyHomeserver && enterpriseService.defaultHomeserverList().size > 1
+        }
+        val signInHomeserverUrl = remember(mustChooseAccountProvider) {
+            if (
+                OnBoardingConfig.SKIP_ACCOUNT_PROVIDER_CONFIRMATION &&
+                !mustChooseAccountProvider &&
+                forcedAccountProvider == null
+            ) {
+                AuthenticationConfig.MATRIX_ORG_URL
+            } else {
+                null
+            }
         }
         val linkAccountProvider by produceState<String?>(initialValue = null) {
             // Account provider from the link, if allowed by the enterprise service
@@ -132,6 +144,7 @@ class OnBoardingPresenter(
             showDeveloperSettings = buildMeta.buildType != BuildType.RELEASE,
             productionApplicationName = buildMeta.productionApplicationName,
             defaultAccountProvider = defaultAccountProvider,
+            signInHomeserverUrl = signInHomeserverUrl,
             mustChooseAccountProvider = mustChooseAccountProvider,
             canLoginWithQrCode = canLoginWithQrCode,
             canCreateAccount = defaultAccountProvider == null && canConnectToAnyHomeserver && OnBoardingConfig.CAN_CREATE_ACCOUNT,

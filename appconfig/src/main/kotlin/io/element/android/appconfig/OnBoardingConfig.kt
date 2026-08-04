@@ -11,4 +11,10 @@ package io.element.android.appconfig
 object OnBoardingConfig {
     /** Whether the user can create an account using the app. */
     const val CAN_CREATE_ACCOUNT = true
+
+    /**
+     * When true, "Sign in manually" submits the default homeserver immediately and
+     * skips the account-provider confirmation screen.
+     */
+    const val SKIP_ACCOUNT_PROVIDER_CONFIRMATION = true
 }

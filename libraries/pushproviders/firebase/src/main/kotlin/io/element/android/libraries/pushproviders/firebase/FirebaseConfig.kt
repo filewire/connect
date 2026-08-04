@@ -8,12 +8,14 @@
 
 package io.element.android.libraries.pushproviders.firebase
 
+import io.element.android.appconfig.PushConfig
+
 object FirebaseConfig {
     /**
      * It is the push gateway for firebase.
      * Note: pusher_http_url should have path '/_matrix/push/v1/notify' -->
      */
-    const val PUSHER_HTTP_URL: String = "https://matrix.org/_matrix/push/v1/notify"
+    const val PUSHER_HTTP_URL: String = PushConfig.FCM_PUSHER_HTTP_URL
 
     const val INDEX = 0
     const val NAME = "Firebase"

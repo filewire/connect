@@ -293,7 +293,20 @@ private fun OnBoardingButtons(
             )
         }
         val defaultAccountProvider = state.defaultAccountProvider
-        if (defaultAccountProvider == null) {
+        val signInHomeserverUrl = state.signInHomeserverUrl
+        if (defaultAccountProvider == null && signInHomeserverUrl != null) {
+            Button(
+                text = stringResource(id = signInButtonStringRes),
+                showProgress = isLoading,
+                onClick = {
+                    state.eventSink(OnBoardingEvents.OnSignIn(signInHomeserverUrl))
+                },
+                enabled = state.submitEnabled || isLoading,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag(TestTags.onBoardingSignIn)
+            )
+        } else if (defaultAccountProvider == null) {
             Button(
                 text = stringResource(id = signInButtonStringRes),
                 onClick = {

@@ -63,6 +63,7 @@ setupDependencyInjection()
 dependencies {
     implementation(libs.androidx.corektx)
     implementation(projects.features.enterprise.api)
+    implementation(projects.appconfig)
     implementation(projects.libraries.architecture)
     implementation(projects.libraries.core)
     implementation(projects.libraries.di)

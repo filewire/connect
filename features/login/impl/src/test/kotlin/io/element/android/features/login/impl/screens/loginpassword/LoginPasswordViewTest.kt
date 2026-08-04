@@ -186,6 +186,7 @@ private fun AndroidComposeUiTest<ComponentActivity>.setLoginPasswordView(
         LoginPasswordView(
             state = state,
             onBackClick = onBackClick,
+            onChangeAccountProvider = {},
         )
     }
 }

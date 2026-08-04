@@ -249,16 +249,16 @@ class PreferencesRootViewTest : RobolectricTest() {
     }
 
     @Test
-    fun `click on Screen lock invokes the expected callback`() = runAndroidComposeUiTest {
+    fun `click on Privacy invokes the expected callback`() = runAndroidComposeUiTest {
         val eventsRecorder = EventsRecorder<PreferencesRootEvent>(expectEvents = false)
         ensureCalledOnce { callback ->
             setView(
                 aPreferencesRootState(
                     eventSink = eventsRecorder,
                 ),
-                onOpenLockScreenSettings = callback,
+                onOpenConnectPrivacy = callback,
             )
-            clickOn(CommonStrings.common_screen_lock)
+            clickOn(R.string.screen_connect_privacy_title)
         }
     }
 
@@ -346,48 +346,7 @@ class PreferencesRootViewTest : RobolectricTest() {
     }
 
     @Test
-    fun `click on Notification invokes the expected callback`() = runAndroidComposeUiTest {
-        val eventsRecorder = EventsRecorder<PreferencesRootEvent>(expectEvents = false)
-        ensureCalledOnce { callback ->
-            setView(
-                aPreferencesRootState(
-                    eventSink = eventsRecorder,
-                ),
-                onOpenNotificationSettings = callback,
-            )
-            clickOn(R.string.screen_notification_settings_title)
-        }
-    }
-
-    @Test
-    fun `click on Blocked users invokes the expected callback`() = runAndroidComposeUiTest {
-        val eventsRecorder = EventsRecorder<PreferencesRootEvent>(expectEvents = false)
-        ensureCalledOnce { callback ->
-            setView(
-                aPreferencesRootState(
-                    nbOfBlockedUsers = 1,
-                    eventSink = eventsRecorder,
-                ),
-                onOpenBlockedUsers = callback,
-            )
-            clickOn(CommonStrings.common_blocked_users)
-        }
-    }
-
-    @Test
-    fun `when nbOfBlockedUsers is 0, item is not shown`() = runAndroidComposeUiTest {
-        val eventsRecorder = EventsRecorder<PreferencesRootEvent>(expectEvents = false)
-        setView(
-            aPreferencesRootState(
-                nbOfBlockedUsers = 0,
-                eventSink = eventsRecorder,
-            ),
-        )
-        onNodeWithText(activity!!.getString(CommonStrings.common_blocked_users)).assertDoesNotExist()
-    }
-
-    @Test
-    fun `click on Remove this device invokes the expected callback`() = runAndroidComposeUiTest {
+    fun `click on About invokes the expected callback`() = runAndroidComposeUiTest {
         val eventsRecorder = EventsRecorder<PreferencesRootEvent>(expectEvents = false)
         ensureCalledOnce { callback ->
             setView(
@@ -453,14 +412,12 @@ private fun AndroidComposeUiTest<ComponentActivity>.setView(
     onLinkNewDeviceClick: () -> Unit = EnsureNeverCalled(),
     onOpenAnalytics: () -> Unit = EnsureNeverCalled(),
     onOpenRageShake: () -> Unit = EnsureNeverCalled(),
-    onOpenLockScreenSettings: () -> Unit = EnsureNeverCalled(),
+    onOpenConnectPrivacy: () -> Unit = EnsureNeverCalled(),
     onOpenAbout: () -> Unit = EnsureNeverCalled(),
     onOpenDeveloperSettings: () -> Unit = EnsureNeverCalled(),
     onOpenAdvancedSettings: () -> Unit = EnsureNeverCalled(),
     onOpenLabs: () -> Unit = EnsureNeverCalled(),
-    onOpenNotificationSettings: () -> Unit = EnsureNeverCalled(),
     onOpenUserProfile: (MatrixUser) -> Unit = EnsureNeverCalledWithParam(),
-    onOpenBlockedUsers: () -> Unit = EnsureNeverCalled(),
     onSignOutClick: () -> Unit = EnsureNeverCalled(),
     onDeactivateClick: () -> Unit = EnsureNeverCalled(),
 ) {
@@ -475,14 +432,12 @@ private fun AndroidComposeUiTest<ComponentActivity>.setView(
             onLinkNewDeviceClick = onLinkNewDeviceClick,
             onOpenAnalytics = onOpenAnalytics,
             onOpenRageShake = onOpenRageShake,
-            onOpenLockScreenSettings = onOpenLockScreenSettings,
+            onOpenConnectPrivacy = onOpenConnectPrivacy,
             onOpenAbout = onOpenAbout,
             onOpenDeveloperSettings = onOpenDeveloperSettings,
             onOpenAdvancedSettings = onOpenAdvancedSettings,
             onOpenLabs = onOpenLabs,
-            onOpenNotificationSettings = onOpenNotificationSettings,
             onOpenUserProfile = onOpenUserProfile,
-            onOpenBlockedUsers = onOpenBlockedUsers,
             onSignOutClick = onSignOutClick,
             onDeactivateClick = onDeactivateClick,
         )

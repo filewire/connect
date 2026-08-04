@@ -26,6 +26,7 @@ import io.element.android.features.lockscreen.api.LockScreenEntryPoint
 import io.element.android.features.logout.api.LogoutEntryPoint
 import io.element.android.features.preferences.api.PreferencesEntryPoint
 import io.element.android.features.preferences.impl.about.AboutNode
+import io.element.android.features.preferences.impl.connectprivacy.ConnectPrivacyNode
 import io.element.android.features.preferences.impl.advanced.AdvancedSettingsNode
 import io.element.android.features.preferences.impl.analytics.AnalyticsSettingsNode
 import io.element.android.features.preferences.impl.blockedusers.BlockedUsersNode
@@ -114,6 +115,12 @@ class PreferencesFlowNode(
         data object AccountDeactivation : NavTarget
 
         @Parcelize
+        data class ConnectPrivacy(
+            val showBlockedUsers: Boolean,
+            val nbOfBlockedUsers: Int,
+        ) : NavTarget
+
+        @Parcelize
         data object OssLicenses : NavTarget
     }
 
@@ -173,6 +180,15 @@ class PreferencesFlowNode(
 
                     override fun navigateToBlockedUsers() {
                         backstack.push(NavTarget.BlockedUsers)
+                    }
+
+                    override fun navigateToConnectPrivacy(showBlockedUsers: Boolean, nbOfBlockedUsers: Int) {
+                        backstack.push(
+                            NavTarget.ConnectPrivacy(
+                                showBlockedUsers = showBlockedUsers,
+                                nbOfBlockedUsers = nbOfBlockedUsers,
+                            )
+                        )
                     }
 
                     override fun startSignOutFlow() {
@@ -305,6 +321,26 @@ class PreferencesFlowNode(
             }
             NavTarget.BlockedUsers -> {
                 createNode<BlockedUsersNode>(buildContext)
+            }
+            is NavTarget.ConnectPrivacy -> {
+                val inputs = ConnectPrivacyNode.Inputs(
+                    showBlockedUsers = navTarget.showBlockedUsers,
+                    nbOfBlockedUsers = navTarget.nbOfBlockedUsers,
+                )
+                val callback = object : ConnectPrivacyNode.Callback {
+                    override fun navigateToNotificationSettings() {
+                        backstack.push(NavTarget.NotificationSettings)
+                    }
+
+                    override fun navigateToLockScreenSettings() {
+                        backstack.push(NavTarget.LockScreenSettings)
+                    }
+
+                    override fun navigateToBlockedUsers() {
+                        backstack.push(NavTarget.BlockedUsers)
+                    }
+                }
+                createNode<ConnectPrivacyNode>(buildContext, plugins = listOf(inputs, callback))
             }
             NavTarget.SignOut -> {
                 val callBack: LogoutEntryPoint.Callback = object : LogoutEntryPoint.Callback {

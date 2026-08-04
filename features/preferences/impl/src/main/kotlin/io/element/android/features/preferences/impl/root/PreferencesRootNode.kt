@@ -50,6 +50,7 @@ class PreferencesRootNode(
         fun navigateToLinkNewDevice()
         fun navigateToUserProfile(matrixUser: MatrixUser)
         fun navigateToBlockedUsers()
+        fun navigateToConnectPrivacy(showBlockedUsers: Boolean, nbOfBlockedUsers: Int)
         fun startSignOutFlow()
         fun startAccountDeactivationFlow()
     }
@@ -90,10 +91,13 @@ class PreferencesRootNode(
             onOpenLabs = callback::navigateToLabs,
             onLinkNewDeviceClick = callback::navigateToLinkNewDevice,
             onManageAccountClick = { onManageAccountClick(activity, it, isDark) },
-            onOpenNotificationSettings = callback::navigateToNotificationSettings,
-            onOpenLockScreenSettings = callback::navigateToLockScreenSettings,
+            onOpenConnectPrivacy = {
+                callback.navigateToConnectPrivacy(
+                    state.showBlockedUsersItem,
+                    state.nbOfBlockedUsers,
+                )
+            },
             onOpenUserProfile = callback::navigateToUserProfile,
-            onOpenBlockedUsers = callback::navigateToBlockedUsers,
             onSignOutClick = {
                 if (state.directLogoutState.canDoDirectSignOut) {
                     state.directLogoutState.eventSink(DirectLogoutEvents.Logout(ignoreSdkError = false))

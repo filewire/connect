@@ -63,6 +63,7 @@ import io.element.android.libraries.designsystem.theme.components.Button
 import io.element.android.libraries.designsystem.theme.components.Icon
 import io.element.android.libraries.designsystem.theme.components.PasswordVisibilityToggle
 import io.element.android.libraries.designsystem.theme.components.Scaffold
+import io.element.android.libraries.designsystem.theme.components.TextButton
 import io.element.android.libraries.designsystem.theme.components.TextField
 import io.element.android.libraries.designsystem.theme.components.TopAppBar
 import io.element.android.libraries.testtags.TestTags
@@ -74,6 +75,7 @@ import io.element.android.libraries.ui.strings.CommonStrings
 fun LoginPasswordView(
     state: LoginPasswordState,
     onBackClick: () -> Unit,
+    onChangeAccountProvider: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val autofillManager = LocalAutofillManager.current
@@ -158,6 +160,14 @@ fun LoginPasswordView(
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag(TestTags.loginContinue)
+                    )
+                    TextButton(
+                        text = stringResource(id = R.string.screen_account_provider_change),
+                        onClick = onChangeAccountProvider,
+                        enabled = !isLoading,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag(TestTags.loginChangeServer)
                     )
                     Spacer(modifier = Modifier.height(48.dp))
                 }
@@ -295,5 +305,6 @@ internal fun LoginPasswordViewPreview(@PreviewParameter(LoginPasswordStateProvid
     LoginPasswordView(
         state = state,
         onBackClick = {},
+        onChangeAccountProvider = {},
     )
 }
