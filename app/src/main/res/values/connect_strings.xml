@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?><!--
+  ~ Connect string overrides (app module overrides library localazy strings).
+  ~ Do not duplicate these keys in feature temporary.xml files.
+  -->
+<resources>
+    <string name="screen_login_subtitle">Connect is a secure messaging app for private communication.</string>
+    <string name="screen_change_account_provider_matrix_org_subtitle">The default Connect server for secure, private messaging.</string>
+    <string name="screen_server_confirmation_message_login_matrix_dot_org">Connect is a secure messaging app for private communication.</string>
+    <string name="screen_onboarding_welcome_title">Welcome to Connect</string>
+    <string name="screen_onboarding_welcome_subtitle">Secure messaging, supercharged for speed and simplicity.</string>
+    <string name="screen_onboarding_welcome_message">Welcome to Connect. Supercharged for speed and simplicity.</string>
+    <string name="screen_notification_settings_sound_element_default">Connect Default</string>
+    <string name="screen_notification_settings_sound_element_fade">Connect Fade</string>
+</resources>
