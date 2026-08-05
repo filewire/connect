@@ -48,6 +48,7 @@ class WebViewWidgetMessageInterceptor(
         webView.webViewClient = object : WebViewClient() {
             override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
                 super.onPageStarted(view, url, favicon)
+                WebViewCallTouchFix.apply(view)
 
                 // Due to https://github.com/element-hq/element-x-android/issues/4097
                 // we need to supply a logging implementation that correctly includes
@@ -93,6 +94,7 @@ class WebViewWidgetMessageInterceptor(
             }
 
             override fun onPageFinished(view: WebView, url: String) {
+                WebViewCallTouchFix.apply(view)
                 onUrlLoaded(url)
             }
 

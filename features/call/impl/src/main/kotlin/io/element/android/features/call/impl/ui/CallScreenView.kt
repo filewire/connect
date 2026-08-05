@@ -210,7 +210,7 @@ private fun CallWebView(
     }
 }
 
-@SuppressLint("SetJavaScriptEnabled")
+@SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
 private fun WebView.setup(
     userAgent: String,
     onPermissionsRequested: (PermissionRequest) -> Unit,
@@ -220,6 +220,19 @@ private fun WebView.setup(
         ViewGroup.LayoutParams.MATCH_PARENT,
         ViewGroup.LayoutParams.MATCH_PARENT
     )
+    // Keep parent Compose/ViewGroup from stealing vertical drags of the self-view PiP tile.
+    overScrollMode = android.view.View.OVER_SCROLL_NEVER
+    setOnTouchListener { v, event ->
+        when (event.actionMasked) {
+            android.view.MotionEvent.ACTION_DOWN,
+            android.view.MotionEvent.ACTION_MOVE ->
+                v.parent?.requestDisallowInterceptTouchEvent(true)
+            android.view.MotionEvent.ACTION_UP,
+            android.view.MotionEvent.ACTION_CANCEL ->
+                v.parent?.requestDisallowInterceptTouchEvent(false)
+        }
+        false
+    }
 
     with(settings) {
         javaScriptEnabled = true
