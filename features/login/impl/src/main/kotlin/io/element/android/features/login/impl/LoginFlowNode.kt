@@ -314,11 +314,18 @@ class LoginFlowNode(
             NavTarget.SearchAccountProvider -> {
                 val callback = object : SearchAccountProviderNode.Callback {
                     override fun onDone() {
-                        // Go back to the Account Provider screen
-                        val confirmAccountProvider = backstack.elements.value.firstOrNull {
-                            it.key.navTarget is NavTarget.ConfirmAccountProvider
-                        }?.key?.navTarget ?: NavTarget.ConfirmAccountProvider(isAccountCreation = false)
-                        backstack.singleTop(confirmAccountProvider)
+                        // Prefer LoginPassword when that is on the stack (Connect skip-confirmation flow).
+                        val loginPassword = backstack.elements.value.firstOrNull {
+                            it.key.navTarget is NavTarget.LoginPassword
+                        }?.key?.navTarget
+                        if (loginPassword != null) {
+                            backstack.singleTop(loginPassword)
+                        } else {
+                            val confirmAccountProvider = backstack.elements.value.firstOrNull {
+                                it.key.navTarget is NavTarget.ConfirmAccountProvider
+                            }?.key?.navTarget ?: NavTarget.ConfirmAccountProvider(isAccountCreation = false)
+                            backstack.singleTop(confirmAccountProvider)
+                        }
                     }
                 }
 
