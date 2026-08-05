@@ -9,13 +9,16 @@
 package config
 
 object BuildTimeConfig {
-    const val APPLICATION_ID = "io.element.android.x"
+    /** Android applicationId — must match Firebase Android app package names. */
+    const val APPLICATION_ID = "org.filewire.connect"
     const val APPLICATION_NAME = "Connect"
-    const val GOOGLE_APP_ID_RELEASE = "1:912726360885:android:d097de99a4c23d2700427c"
-    const val GOOGLE_APP_ID_DEBUG = "1:912726360885:android:def0a4e454042e9b00427c"
-    const val GOOGLE_APP_ID_NIGHTLY = "1:912726360885:android:e17435e0beb0303000427c"
 
-    val METADATA_HOST_REVERSED: String? = null
+    const val GOOGLE_APP_ID_RELEASE = "1:247291343746:android:c8165338a10fd4f473559b"
+    const val GOOGLE_APP_ID_DEBUG = "1:247291343746:android:9bb275e8eb91d66473559b"
+    const val GOOGLE_APP_ID_NIGHTLY = GOOGLE_APP_ID_RELEASE
+
+    /** OAuth redirect scheme base (reversed domain). Used if homeserver supports OIDC/MAS login. */
+    val METADATA_HOST_REVERSED: String? = "eu.org.filewire.connect"
     val URL_WEBSITE: String? = "https://filewire.eu.org"
     val URL_LOGO: String? = null
     val URL_COPYRIGHT: String? = "https://filewire.eu.org"

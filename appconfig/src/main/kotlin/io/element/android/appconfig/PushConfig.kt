@@ -9,6 +9,12 @@ package io.element.android.appconfig
 
 object PushConfig {
     /**
+     * Matrix pusher app_id — must match a key under `apps:` in Sygnal config.
+     * Note: pusher_app_id cannot exceed 64 chars.
+     */
+    const val PUSHER_APP_ID: String = "org.filewire.connect"
+
+    /**
      * Matrix push gateway (Sygnal) for Firebase FCM pushers.
      * Must end with /_matrix/push/v1/notify
      */
