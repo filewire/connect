@@ -17,6 +17,11 @@ object PushConfig {
     /**
      * Matrix push gateway (Sygnal) for Firebase FCM pushers.
      * Must end with /_matrix/push/v1/notify
+     *
+     * Use the Docker-internal URL so Synapse can reach Sygnal on matrix-network.
+     * No Cloudflare Tunnel / published ports needed for Sygnal (Synapse calls this URL).
+     * Troubleshoot "push loopback" from the phone may still fail — that test hits a
+     * public URL; real message push uses Synapse → Sygnal on the Docker network.
      */
-    const val FCM_PUSHER_HTTP_URL: String = "https://matrix.filewire.eu.org/_matrix/push/v1/notify"
+    const val FCM_PUSHER_HTTP_URL: String = "http://matrix-sygnal:5000/_matrix/push/v1/notify"
 }
