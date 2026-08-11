@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -41,6 +42,7 @@ import io.element.android.features.call.impl.utils.InvalidAudioDeviceReason
 import io.element.android.features.call.impl.utils.WebViewAudioManager
 import io.element.android.features.call.impl.utils.WebViewPipController
 import io.element.android.features.call.impl.utils.WebViewWidgetMessageInterceptor
+import io.element.android.features.call.impl.utils.safelyDestroy
 import io.element.android.libraries.architecture.AsyncData
 import io.element.android.libraries.designsystem.components.ProgressDialog
 import io.element.android.libraries.designsystem.components.dialogs.ConfirmationDialog
@@ -102,56 +104,64 @@ internal fun CallScreenView(
             }
         }
 
-        CallWebView(
-            modifier = modifier.consumeWindowInsets(WindowInsets.systemBars).fillMaxSize(),
-            url = state.urlState,
-            userAgent = state.userAgent,
-            onPermissionsRequest = { request ->
-                val androidPermissions = mapWebkitPermissions(request.resources)
-                val callback: RequestPermissionCallback = { request.grant(it) }
-                requestPermissions(androidPermissions.toTypedArray(), callback)
-            },
-            onConsoleMessage = onConsoleMessage,
-            onCreateWebView = { webView ->
-                callWebView = webView
-                webView.addBackHandler(onBackPressed = ::handleBack)
-                val interceptor = WebViewWidgetMessageInterceptor(
-                    webView = webView,
-                    onUrlLoaded = { url ->
-                        webView.evaluateJavascript("controls.onBackButtonPressed = () => { backHandler.onBackPressed() }", null)
-                        if (webViewAudioManager?.isInCallMode?.get() == false) {
-                            Timber.d("URL $url is loaded, starting in-call audio mode")
-                            webViewAudioManager?.onCallStarted()
-                        } else {
-                            Timber.d("Can't start in-call audio mode since the app is already in it.")
-                        }
-                    },
-                    onError = { state.eventSink(CallScreenEvent.OnWebViewError(it)) },
-                )
-                webViewAudioManager = WebViewAudioManager(
-                    webView = webView,
-                    coroutineScope = coroutineScope,
-                    onInvalidAudioDeviceAdded = { invalidAudioDeviceReason = it },
-                )
-                state.eventSink(CallScreenEvent.SetupMessageChannels(interceptor))
-                val pipController = WebViewPipController(webView)
-                pipState.eventSink(PictureInPictureEvent.SetPipController(pipController))
-            },
-            onDestroyWebView = {
-                callWebView = null
-                // Reset audio mode
-                webViewAudioManager?.onCallStopped()
-            }
-        )
+        // Recreate the WebView when Retry bumps the key (e.g. after render-process crash).
+        key(state.webViewInstanceKey) {
+            CallWebView(
+                modifier = modifier.consumeWindowInsets(WindowInsets.systemBars).fillMaxSize(),
+                url = state.urlState,
+                userAgent = state.userAgent,
+                onPermissionsRequest = { request ->
+                    val androidPermissions = mapWebkitPermissions(request.resources)
+                    val callback: RequestPermissionCallback = { request.grant(it) }
+                    requestPermissions(androidPermissions.toTypedArray(), callback)
+                },
+                onConsoleMessage = onConsoleMessage,
+                onCreateWebView = { webView ->
+                    callWebView = webView
+                    webView.addBackHandler(onBackPressed = ::handleBack)
+                    val interceptor = WebViewWidgetMessageInterceptor(
+                        webView = webView,
+                        onUrlLoaded = { url ->
+                            webView.evaluateJavascript("controls.onBackButtonPressed = () => { backHandler.onBackPressed() }", null)
+                            if (webViewAudioManager?.isInCallMode?.get() == false) {
+                                Timber.d("URL $url is loaded, starting in-call audio mode")
+                                webViewAudioManager?.onCallStarted()
+                            } else {
+                                Timber.d("Can't start in-call audio mode since the app is already in it.")
+                            }
+                        },
+                        onError = { state.eventSink(CallScreenEvent.OnWebViewError(it)) },
+                    )
+                    webViewAudioManager = WebViewAudioManager(
+                        webView = webView,
+                        coroutineScope = coroutineScope,
+                        onInvalidAudioDeviceAdded = { invalidAudioDeviceReason = it },
+                    )
+                    state.eventSink(CallScreenEvent.SetupMessageChannels(interceptor))
+                    val pipController = WebViewPipController(webView)
+                    pipState.eventSink(PictureInPictureEvent.SetPipController(pipController))
+                },
+                onDestroyWebView = {
+                    callWebView = null
+                    // Reset audio mode
+                    webViewAudioManager?.onCallStopped()
+                }
+            )
+        }
         when (state.urlState) {
             AsyncData.Uninitialized,
             is AsyncData.Loading ->
                 ProgressDialog(text = stringResource(id = CommonStrings.common_please_wait))
+            is AsyncData.Success -> {
+                if (!state.isCallActive) {
+                    // WebView is up but Element Call has not signalled content_loaded yet — avoid a blank screen.
+                    ProgressDialog(text = stringResource(id = CommonStrings.common_please_wait))
+                }
+            }
             is AsyncData.Failure -> {
                 // Handled via callError / CallErrorDialog from the presenter
                 Timber.e(state.urlState.error, "WebView failed to load URL: ${state.urlState.error.message}")
             }
-            is AsyncData.Success -> Unit
         }
     }
 }
@@ -170,9 +180,13 @@ private fun CallErrorDialog(
     }
     val message = when (error) {
         CallScreenError.LoadTimeout -> stringResource(R.string.call_error_load_timeout_message)
-        is CallScreenError.WebView -> buildString {
-            append(stringResource(CommonStrings.error_unknown))
-            error.details?.takeIf { it.isNotEmpty() }?.let { append("\n\n").append(it) }
+        is CallScreenError.WebView -> when (error.details) {
+            WebViewWidgetMessageInterceptor.RENDER_PROCESS_CRASH_DETAILS ->
+                stringResource(R.string.call_error_render_process)
+            else -> buildString {
+                append(stringResource(CommonStrings.error_unknown))
+                error.details?.takeIf { it.isNotEmpty() }?.let { append("\n\n").append(it) }
+            }
         }
         is CallScreenError.Setup -> buildString {
             append(stringResource(R.string.call_error_setup_message))
@@ -247,7 +261,13 @@ private fun CallWebView(
             },
             onRelease = { webView ->
                 onDestroyWebView(webView)
-                webView.destroy()
+                webView.safelyDestroy(
+                    javascriptInterfaces = listOf(
+                        WebViewWidgetMessageInterceptor.LISTENER_NAME,
+                        "backHandler",
+                        "androidNativeBridge",
+                    ),
+                )
             }
         )
     }

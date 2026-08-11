@@ -10,13 +10,16 @@ package io.element.android.features.call.impl.utils
 
 import android.graphics.Bitmap
 import android.net.http.SslError
+import android.os.Build
 import android.webkit.JavascriptInterface
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.SslErrorHandler
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.annotation.RequiresApi
 import androidx.core.net.toUri
 import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewCompat
@@ -35,6 +38,9 @@ class WebViewWidgetMessageInterceptor(
         // 'listenerName' so they can both receive the data from the WebView when
         // `${LISTENER_NAME}.postMessage(...)` is called
         const val LISTENER_NAME = "elementX"
+
+        /** Detail string reported via [onError] when Chromium's render process dies. */
+        const val RENDER_PROCESS_CRASH_DETAILS = "Call display crashed"
     }
 
     // It's important to have extra capacity here to make sure we don't drop any messages
@@ -130,6 +136,20 @@ class WebViewWidgetMessageInterceptor(
                 }
 
                 super.onReceivedSslError(view, handler, error)
+            }
+
+            /**
+             * Returning true is required: Chromium kills the whole process if every associated
+             * WebView does not handle a render-process crash (seen on rapid hang-up → recall).
+             */
+            @RequiresApi(Build.VERSION_CODES.O)
+            override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
+                Timber.e(
+                    "Call WebView render process gone (didCrash=%s). Handling without killing the app.",
+                    detail?.didCrash(),
+                )
+                onError(RENDER_PROCESS_CRASH_DETAILS)
+                return true
             }
 
             override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest): WebResourceResponse? {

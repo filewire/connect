@@ -28,6 +28,7 @@ import io.element.android.libraries.core.extensions.runCatchingExceptions
 import io.element.android.libraries.di.annotations.AppCoroutineScope
 import io.element.android.libraries.di.annotations.ApplicationContext
 import io.element.android.libraries.matrix.api.MatrixClientProvider
+import io.element.android.libraries.matrix.api.core.RoomId
 import io.element.android.libraries.matrix.api.core.SessionId
 import io.element.android.libraries.matrix.ui.media.ImageLoaderHolder
 import io.element.android.libraries.push.api.notifications.ForegroundServiceType
@@ -45,6 +46,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.launchIn
@@ -53,8 +55,10 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import timber.log.Timber
 import kotlin.math.min
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * Manages the active call state.
@@ -87,6 +91,27 @@ interface ActiveCallManager {
      * @param callData The data about the call.
      */
     suspend fun joinedCall(callData: CallData)
+
+    /**
+     * Decide whether an outgoing call UI may be started, waiting out a short rejoin cooldown when needed.
+     *
+     * Rapid hang-up → recall races Element Call WebView teardown; the cooldown reduces that race.
+     */
+    suspend fun awaitReadyForOutgoingCall(callData: CallData): OutgoingCallGate
+}
+
+/**
+ * Result of [ActiveCallManager.awaitReadyForOutgoingCall].
+ */
+sealed interface OutgoingCallGate {
+    /** No active call — start a new call Activity. */
+    data object Proceed : OutgoingCallGate
+
+    /** Local UI is already in this room call — bring the existing Activity to the front. */
+    data object AlreadyInThisCall : OutgoingCallGate
+
+    /** Local UI is in a different call — do not start another. */
+    data object BusyWithOtherCall : OutgoingCallGate
 }
 
 @SingleIn(AppScope::class)
@@ -106,6 +131,10 @@ class DefaultActiveCallManager(
 ) : ActiveCallManager {
     private val tag = "ActiveCallManager"
     private var timedOutCallJob: Job? = null
+
+    /** Room + timestamp of the last local hang-up, used for rejoin cooldown. */
+    private var lastHangUpRoomId: RoomId? = null
+    private var lastHangUpEpochMillis: Long = 0L
 
     @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
     internal val activeWakeLock: PowerManager.WakeLock? = context.getSystemService<PowerManager>()
@@ -137,7 +166,16 @@ class DefaultActiveCallManager(
 
             appForegroundStateService.updateHasRingingCall(true)
             Timber.tag(tag).d("Received incoming call for room id: ${notificationData.roomId}, ringDuration(ms): $ringDuration")
-            if (activeCall.value != null) {
+            val currentActiveCall = activeCall.value
+            if (currentActiveCall != null) {
+                if (currentActiveCall.callData.roomId == notificationData.roomId) {
+                    // Already ringing or joined this room — do not treat as a missed call.
+                    Timber.tag(tag).d(
+                        "Incoming call for room already active locally (%s), ignoring",
+                        currentActiveCall.callState,
+                    )
+                    return
+                }
                 displayMissedCallNotification(notificationData)
                 Timber.tag(tag).w("Already have an active call, ignoring incoming call: $notificationData")
                 return
@@ -241,6 +279,7 @@ class DefaultActiveCallManager(
             activeWakeLock.release()
         }
         timedOutCallJob?.cancel()
+        recordHangUp(callData)
         activeCall.value = null
     }
 
@@ -257,6 +296,77 @@ class DefaultActiveCallManager(
             callData = callData,
             callState = CallState.InCall,
         )
+    }
+
+    override suspend fun awaitReadyForOutgoingCall(callData: CallData): OutgoingCallGate {
+        evaluateOutgoingGate(callData)?.let { return it }
+
+        val remainingMs = rejoinCooldownRemainingMs(callData)
+        if (remainingMs > 0) {
+            Timber.tag(tag).d(
+                "Waiting %dms before rejoining call in room %s (WebView teardown cooldown)",
+                remainingMs,
+                callData.roomId,
+            )
+            delay(remainingMs)
+        }
+
+        waitForLocalCallLeave(callData)
+
+        return evaluateOutgoingGate(callData) ?: OutgoingCallGate.Proceed
+    }
+
+    /**
+     * After a local hang-up, MatrixRTC membership can linger (MSC4140 delayed leave).
+     * Starting a new call before we have left causes a blank WebView and load timeout.
+     *
+     * Uses coroutine timeout (not wall clock) so unit tests with a frozen [SystemClock] still complete.
+     */
+    private suspend fun waitForLocalCallLeave(callData: CallData) {
+        if (lastHangUpRoomId != callData.roomId) return
+
+        val client = matrixClientProvider.getOrRestore(callData.sessionId).getOrNull() ?: return
+        val room = client.getRoom(callData.roomId) ?: return
+
+        val leftInTime = withTimeoutOrNull(ElementCallConfig.CALL_LEAVE_SETTLE_MAX_SECONDS.seconds) {
+            while (callData.sessionId in room.roomInfoFlow.first().activeRoomCallParticipants) {
+                delay(500)
+            }
+            Timber.tag(tag).d("Local session left room call in %s, safe to rejoin", callData.roomId)
+            true
+        } == true
+
+        if (!leftInTime) {
+            Timber.tag(tag).w(
+                "Timed out after %ds waiting for local session to leave room call in %s",
+                ElementCallConfig.CALL_LEAVE_SETTLE_MAX_SECONDS,
+                callData.roomId,
+            )
+        }
+    }
+
+    private suspend fun evaluateOutgoingGate(callData: CallData): OutgoingCallGate? = mutex.withLock {
+        val current = activeCall.value ?: return@withLock null
+        return@withLock when {
+            current.callData.roomId == callData.roomId && current.callState is CallState.InCall ->
+                OutgoingCallGate.AlreadyInThisCall
+            current.callData.roomId == callData.roomId && current.callState is CallState.Ringing ->
+                // Local ringing UI already owns this room; bringing the call Activity up is fine.
+                OutgoingCallGate.AlreadyInThisCall
+            else -> OutgoingCallGate.BusyWithOtherCall
+        }
+    }
+
+    private fun recordHangUp(callData: CallData) {
+        lastHangUpRoomId = callData.roomId
+        lastHangUpEpochMillis = systemClock.epochMillis()
+    }
+
+    private fun rejoinCooldownRemainingMs(callData: CallData): Long {
+        if (lastHangUpRoomId != callData.roomId) return 0L
+        val elapsed = systemClock.epochMillis() - lastHangUpEpochMillis
+        val cooldownMs = ElementCallConfig.CALL_REJOIN_COOLDOWN_SECONDS.seconds.inWholeMilliseconds
+        return (cooldownMs - elapsed).coerceAtLeast(0L)
     }
 
     @SuppressLint("MissingPermission")

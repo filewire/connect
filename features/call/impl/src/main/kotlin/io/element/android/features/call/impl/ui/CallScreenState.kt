@@ -29,6 +29,10 @@ data class CallScreenState(
     val callError: CallScreenError?,
     val userAgent: String,
     val isCallActive: Boolean,
+    /**
+     * Bumped on Retry so Compose recreates the WebView (required after a render-process crash).
+     */
+    val webViewInstanceKey: Int = 0,
     val eventSink: (CallScreenEvent) -> Unit,
 ) {
     /** All current call errors offer Retry; the user can also hang up. */

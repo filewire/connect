@@ -12,6 +12,7 @@ import io.element.android.features.call.api.CallData
 import io.element.android.features.call.impl.notifications.CallNotificationData
 import io.element.android.features.call.impl.utils.ActiveCall
 import io.element.android.features.call.impl.utils.ActiveCallManager
+import io.element.android.features.call.impl.utils.OutgoingCallGate
 import io.element.android.tests.testutils.simulateLongTask
 import kotlinx.coroutines.flow.MutableStateFlow
 
@@ -19,6 +20,7 @@ class FakeActiveCallManager(
     var registerIncomingCallResult: (CallNotificationData) -> Unit = {},
     var hangUpCallResult: (CallData, CallNotificationData?) -> Unit = { _, _ -> },
     var joinedCallResult: (CallData) -> Unit = {},
+    var awaitReadyForOutgoingCallResult: (CallData) -> OutgoingCallGate = { OutgoingCallGate.Proceed },
 ) : ActiveCallManager {
     override val activeCall = MutableStateFlow<ActiveCall?>(null)
 
@@ -32,6 +34,10 @@ class FakeActiveCallManager(
 
     override suspend fun joinedCall(callData: CallData) = simulateLongTask {
         joinedCallResult(callData)
+    }
+
+    override suspend fun awaitReadyForOutgoingCall(callData: CallData): OutgoingCallGate = simulateLongTask {
+        awaitReadyForOutgoingCallResult(callData)
     }
 
     fun setActiveCall(value: ActiveCall?) {

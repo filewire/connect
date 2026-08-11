@@ -28,6 +28,7 @@ import io.element.android.features.call.api.CallData
 import io.element.android.features.call.impl.data.WidgetMessage
 import io.element.android.features.call.impl.utils.ActiveCallManager
 import io.element.android.features.call.impl.utils.CallWidgetProvider
+import io.element.android.features.call.impl.utils.WebViewWidgetMessageInterceptor
 import io.element.android.features.call.impl.utils.WidgetMessageInterceptor
 import io.element.android.features.call.impl.utils.WidgetMessageSerializer
 import io.element.android.libraries.architecture.AsyncData
@@ -170,23 +171,24 @@ class CallScreenPresenter(
         fun handleEvent(event: CallScreenEvent) {
             when (event) {
                 is CallScreenEvent.Hangup -> {
-                    val widgetId = callWidgetDriver.value?.id
-                    val interceptor = messageInterceptor.value
-                    if (widgetId != null && interceptor != null && isWidgetLoaded) {
-                        // If the call was joined, we need to hang up first. Then the UI will be dismissed automatically.
-                        sendHangupMessage(widgetId, interceptor)
-                        isWidgetLoaded = false
-
-                        coroutineScope.launch {
-                            // Wait for a couple of seconds to receive the hangup message
-                            // If we don't get it in time, we close the screen anyway
-                            delay(2.seconds)
-                            close(callWidgetDriver.value, navigator)
+                    coroutineScope.launch {
+                        val widgetId = callWidgetDriver.value?.id
+                        val interceptor = messageInterceptor.value
+                        val driver = callWidgetDriver.value
+                        if (widgetId != null && interceptor != null) {
+                            // Ask Element Call to leave so the remote side stops ringing.
+                            sendHangupMessage(widgetId, interceptor)
+                            isWidgetLoaded = false
+                            // Skip grace when already on an error dialog (WebView is gone).
+                            if (callError == null) {
+                                Timber.d(
+                                    "Waiting %ds for Element Call to leave before closing call UI",
+                                    ElementCallConfig.CALL_HANGUP_GRACE_SECONDS,
+                                )
+                                delay(ElementCallConfig.CALL_HANGUP_GRACE_SECONDS.seconds)
+                            }
                         }
-                    } else {
-                        coroutineScope.launch {
-                            close(callWidgetDriver.value, navigator)
-                        }
+                        close(driver, navigator)
                     }
                 }
                 is CallScreenEvent.Retry -> {
@@ -219,7 +221,9 @@ class CallScreenPresenter(
                     messageInterceptor.value = event.widgetMessageInterceptor
                 }
                 is CallScreenEvent.OnWebViewError -> {
-                    if (!ignoreWebViewError) {
+                    val isRenderProcessCrash =
+                        event.description == WebViewWidgetMessageInterceptor.RENDER_PROCESS_CRASH_DETAILS
+                    if (isRenderProcessCrash || !ignoreWebViewError) {
                         callError = CallScreenError.WebView(event.description)
                     }
                     // Else ignore the error, give a chance the Element Call to recover by itself.
@@ -232,6 +236,7 @@ class CallScreenPresenter(
             callError = callError,
             userAgent = userAgent,
             isCallActive = isWidgetLoaded,
+            webViewInstanceKey = loadAttempt,
             eventSink = ::handleEvent,
         )
     }

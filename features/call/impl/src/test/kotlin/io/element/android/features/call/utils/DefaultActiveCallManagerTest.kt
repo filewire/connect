@@ -20,6 +20,7 @@ import io.element.android.features.call.impl.utils.ActiveCall
 import io.element.android.features.call.impl.utils.CallState
 import io.element.android.features.call.impl.utils.DefaultActiveCallManager
 import io.element.android.features.call.impl.utils.DefaultCurrentCallService
+import io.element.android.features.call.impl.utils.OutgoingCallGate
 import io.element.android.libraries.matrix.api.core.EventId
 import io.element.android.libraries.matrix.api.core.RoomId
 import io.element.android.libraries.matrix.api.core.SessionId
@@ -50,6 +51,7 @@ import io.mockk.coVerify
 import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -505,6 +507,105 @@ class DefaultActiveCallManagerTest : RobolectricTest() {
 
         assertThat(manager.activeWakeLock?.isHeld).isFalse()
         verify(exactly = 0) { notificationManagerCompat.notify(notificationId, any()) }
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `registerIncomingCall - same room as active call is ignored without missed notification`() = runTest {
+        val addMissedCallNotificationLambda = lambdaRecorder<SessionId, RoomId, EventId, Unit> { _, _, _ -> }
+        val onMissedCallNotificationHandler = FakeOnMissedCallNotificationHandler(addMissedCallNotificationLambda = addMissedCallNotificationLambda)
+        val manager = createActiveCallManager(
+            onMissedCallNotificationHandler = onMissedCallNotificationHandler,
+        )
+
+        val callNotificationData = aCallNotificationData()
+        manager.registerIncomingCall(callNotificationData)
+        val activeCall = manager.activeCall.value
+
+        manager.registerIncomingCall(aCallNotificationData(eventId = AN_EVENT_ID_2))
+
+        assertThat(manager.activeCall.value).isEqualTo(activeCall)
+        advanceTimeBy(1)
+        addMissedCallNotificationLambda.assertions().isNeverCalled()
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `awaitReadyForOutgoingCall - waits rejoin cooldown after hang up`() = runTest {
+        val manager = createActiveCallManager()
+        val callData = CallData(A_SESSION_ID, A_ROOM_ID, isAudioCall = true)
+
+        manager.joinedCall(callData)
+        manager.hangUpCall(callData)
+
+        val gateDeferred = backgroundScope.async {
+            manager.awaitReadyForOutgoingCall(callData)
+        }
+        runCurrent()
+        assertThat(gateDeferred.isCompleted).isFalse()
+
+        advanceTimeBy(5_000)
+        runCurrent()
+
+        assertThat(gateDeferred.await()).isEqualTo(OutgoingCallGate.Proceed)
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `awaitReadyForOutgoingCall - waits until local session leaves room call`() = runTest {
+        val room = FakeJoinedRoom(
+            baseRoom = FakeBaseRoom().apply {
+                givenRoomInfo(
+                    aRoomInfo(
+                        hasRoomCall = true,
+                        activeRoomCallParticipants = listOf(A_SESSION_ID),
+                    ),
+                )
+            },
+        )
+        val client = FakeMatrixClient(sessionId = A_SESSION_ID).apply {
+            givenGetRoomResult(A_ROOM_ID, room)
+        }
+        val manager = createActiveCallManager(
+            matrixClientProvider = FakeMatrixClientProvider(getClient = { Result.success(client) }),
+        )
+        val callData = CallData(A_SESSION_ID, A_ROOM_ID, isAudioCall = true)
+
+        manager.joinedCall(callData)
+        manager.hangUpCall(callData)
+
+        val gateDeferred = backgroundScope.async {
+            manager.awaitReadyForOutgoingCall(callData)
+        }
+        runCurrent()
+        assertThat(gateDeferred.isCompleted).isFalse()
+
+        room.baseRoom.givenRoomInfo(
+            aRoomInfo(hasRoomCall = false, activeRoomCallParticipants = emptyList()),
+        )
+        advanceTimeBy(5_000)
+        runCurrent()
+
+        assertThat(gateDeferred.await()).isEqualTo(OutgoingCallGate.Proceed)
+    }
+
+    @Test
+    fun `awaitReadyForOutgoingCall - busy when another room call is active`() = runTest {
+        val manager = createActiveCallManager()
+        manager.joinedCall(CallData(A_SESSION_ID, A_ROOM_ID, isAudioCall = true))
+
+        val gate = manager.awaitReadyForOutgoingCall(CallData(A_SESSION_ID, A_ROOM_ID_2, isAudioCall = true))
+        assertThat(gate).isEqualTo(OutgoingCallGate.BusyWithOtherCall)
+    }
+
+    @Test
+    fun `awaitReadyForOutgoingCall - already in this call when same room is active`() = runTest {
+        val manager = createActiveCallManager()
+        val callData = CallData(A_SESSION_ID, A_ROOM_ID, isAudioCall = true)
+        manager.joinedCall(callData)
+
+        val gate = manager.awaitReadyForOutgoingCall(callData)
+        assertThat(gate).isEqualTo(OutgoingCallGate.AlreadyInThisCall)
     }
 
     private fun setupShadowPowerManager() {

@@ -15,6 +15,7 @@ import io.element.android.features.call.api.CallData
 import io.element.android.features.call.impl.DefaultElementCallEntryPoint
 import io.element.android.features.call.impl.notifications.CallNotificationData
 import io.element.android.features.call.impl.ui.ElementCallActivity
+import io.element.android.features.call.impl.utils.OutgoingCallGate
 import io.element.android.features.call.utils.FakeActiveCallManager
 import io.element.android.libraries.matrix.test.AN_EVENT_ID
 import io.element.android.libraries.matrix.test.A_ROOM_ID
@@ -32,15 +33,30 @@ import org.robolectric.Shadows.shadowOf
 import kotlin.time.Duration.Companion.seconds
 
 class DefaultElementCallEntryPointTest : RobolectricTest() {
+    @OptIn(ExperimentalCoroutinesApi::class)
     @Test
     fun `startCall - starts ElementCallActivity setup with the needed extras`() = runTest {
         val entryPoint = createEntryPoint()
         entryPoint.startCall(CallData(A_SESSION_ID, A_ROOM_ID, isAudioCall = false))
+        advanceTimeBy(1.seconds)
 
         val expectedIntent = Intent(InstrumentationRegistry.getInstrumentation().targetContext, ElementCallActivity::class.java)
         val intent = shadowOf(RuntimeEnvironment.getApplication()).nextStartedActivity
         assertThat(intent.component).isEqualTo(expectedIntent.component)
         assertThat(intent.extras?.containsKey("EXTRA_CALL_TYPE")).isTrue()
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `startCall - does not start activity when busy with another call`() = runTest {
+        val activeCallManager = FakeActiveCallManager(
+            awaitReadyForOutgoingCallResult = { OutgoingCallGate.BusyWithOtherCall },
+        )
+        val entryPoint = createEntryPoint(activeCallManager = activeCallManager)
+        entryPoint.startCall(CallData(A_SESSION_ID, A_ROOM_ID, isAudioCall = false))
+        advanceTimeBy(1.seconds)
+
+        assertThat(shadowOf(RuntimeEnvironment.getApplication()).nextStartedActivity).isNull()
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -73,5 +89,6 @@ class DefaultElementCallEntryPointTest : RobolectricTest() {
     ) = DefaultElementCallEntryPoint(
         context = InstrumentationRegistry.getInstrumentation().targetContext,
         activeCallManager = activeCallManager,
+        appCoroutineScope = backgroundScope,
     )
 }

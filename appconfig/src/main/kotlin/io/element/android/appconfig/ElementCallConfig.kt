@@ -20,4 +20,23 @@ object ElementCallConfig {
      * a recoverable error. Slow networks / JWT / ICE often need more than a few seconds.
      */
     const val CALL_WIDGET_LOAD_TIMEOUT_SECONDS = 45
+
+    /**
+     * After hanging up, wait this long before starting another call UI for the same room.
+     * Rapid hang-up → recall otherwise races WebView teardown and can crash the renderer
+     * (and the whole app if [android.webkit.WebViewClient.onRenderProcessGone] is not handled).
+     */
+    const val CALL_REJOIN_COOLDOWN_SECONDS = 5
+
+    /**
+     * After the user hangs up, keep the call WebView alive briefly so Element Call can send
+     * MatrixRTC leave / end-ring events before the Activity is destroyed.
+     */
+    const val CALL_HANGUP_GRACE_SECONDS = 5
+
+    /**
+     * Max time to wait for our session to leave the room's active call participants list
+     * before opening a new outgoing call in the same room.
+     */
+    const val CALL_LEAVE_SETTLE_MAX_SECONDS = 20
 }

@@ -143,7 +143,8 @@ class CallScreenPresenterTest {
 
             initialState.eventSink(CallScreenEvent.Hangup)
 
-            // Let background coroutines run and the widget drive be received
+            // Grace period before closing when hangup was sent to the WebView
+            advanceTimeBy(5.seconds)
             runCurrent()
 
             assertThat(navigator.closeCalled).isTrue()

@@ -16,14 +16,20 @@ import io.element.android.features.call.api.ElementCallEntryPoint
 import io.element.android.features.call.impl.notifications.CallNotificationData
 import io.element.android.features.call.impl.utils.ActiveCallManager
 import io.element.android.features.call.impl.utils.IntentProvider
+import io.element.android.features.call.impl.utils.OutgoingCallGate
+import io.element.android.libraries.di.annotations.AppCoroutineScope
 import io.element.android.libraries.di.annotations.ApplicationContext
 import io.element.android.libraries.matrix.api.core.EventId
 import io.element.android.libraries.matrix.api.core.UserId
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
+import timber.log.Timber
 
 @ContributesBinding(AppScope::class)
 class DefaultElementCallEntryPoint(
     @ApplicationContext private val context: Context,
     private val activeCallManager: ActiveCallManager,
+    @AppCoroutineScope private val appCoroutineScope: CoroutineScope,
 ) : ElementCallEntryPoint {
     companion object {
         const val EXTRA_CALL_TYPE = "EXTRA_CALL_TYPE"
@@ -31,7 +37,18 @@ class DefaultElementCallEntryPoint(
     }
 
     override fun startCall(callData: CallData) {
-        context.startActivity(IntentProvider.createIntent(context, callData))
+        appCoroutineScope.launch {
+            when (val gate = activeCallManager.awaitReadyForOutgoingCall(callData)) {
+                OutgoingCallGate.Proceed,
+                OutgoingCallGate.AlreadyInThisCall -> {
+                    Timber.d("Starting call activity (%s) for %s", gate, callData.roomId)
+                    context.startActivity(IntentProvider.createIntent(context, callData))
+                }
+                OutgoingCallGate.BusyWithOtherCall -> {
+                    Timber.w("Ignoring startCall for %s — already in another call", callData.roomId)
+                }
+            }
+        }
     }
 
     override suspend fun handleIncomingCall(
