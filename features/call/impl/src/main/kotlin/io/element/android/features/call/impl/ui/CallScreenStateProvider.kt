@@ -16,21 +16,25 @@ open class CallScreenStateProvider : PreviewParameterProvider<CallScreenState> {
         get() = sequenceOf(
             aCallScreenState(),
             aCallScreenState(urlState = AsyncData.Loading()),
-            aCallScreenState(urlState = AsyncData.Failure(Exception("An error occurred"))),
-            aCallScreenState(webViewError = "Error details from WebView"),
+            aCallScreenState(
+                urlState = AsyncData.Failure(Exception("An error occurred")),
+                callError = CallScreenError.Setup("An error occurred"),
+            ),
+            aCallScreenState(callError = CallScreenError.WebView("Error details from WebView")),
+            aCallScreenState(callError = CallScreenError.LoadTimeout),
         )
 }
 
 internal fun aCallScreenState(
     urlState: AsyncData<String> = AsyncData.Success("https://call.element.io/some-actual-call?with=parameters"),
-    webViewError: String? = null,
+    callError: CallScreenError? = null,
     userAgent: String = "",
     isCallActive: Boolean = true,
     eventSink: (CallScreenEvent) -> Unit = {},
 ): CallScreenState {
     return CallScreenState(
         urlState = urlState,
-        webViewError = webViewError,
+        callError = callError,
         userAgent = userAgent,
         isCallActive = isCallActive,
         eventSink = eventSink,

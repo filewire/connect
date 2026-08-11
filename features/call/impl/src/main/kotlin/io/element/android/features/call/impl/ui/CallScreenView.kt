@@ -43,6 +43,7 @@ import io.element.android.features.call.impl.utils.WebViewPipController
 import io.element.android.features.call.impl.utils.WebViewWidgetMessageInterceptor
 import io.element.android.libraries.architecture.AsyncData
 import io.element.android.libraries.designsystem.components.ProgressDialog
+import io.element.android.libraries.designsystem.components.dialogs.ConfirmationDialog
 import io.element.android.libraries.designsystem.components.dialogs.ErrorDialog
 import io.element.android.libraries.designsystem.preview.ElementPreview
 import io.element.android.libraries.designsystem.preview.PreviewsDayNight
@@ -79,15 +80,18 @@ internal fun CallScreenView(
     BackHandler {
         handleBack(fromNative = true)
     }
-    if (state.webViewError != null) {
-        ErrorDialog(
-            content = buildString {
-                append(stringResource(CommonStrings.error_unknown))
-                state.webViewError.takeIf { it.isNotEmpty() }?.let { append("\n\n").append(it) }
-            },
-            onSubmit = { state.eventSink(CallScreenEvent.Hangup) },
-        )
-    } else {
+    when (val error = state.callError) {
+        null -> Unit
+        else -> {
+            CallErrorDialog(
+                error = error,
+                canRetry = state.canRetryError,
+                onRetry = { state.eventSink(CallScreenEvent.Retry) },
+                onHangup = { state.eventSink(CallScreenEvent.Hangup) },
+            )
+        }
+    }
+    if (state.callError == null) {
         var webViewAudioManager by remember { mutableStateOf<WebViewAudioManager?>(null) }
         val coroutineScope = rememberCoroutineScope()
 
@@ -144,14 +148,53 @@ internal fun CallScreenView(
             is AsyncData.Loading ->
                 ProgressDialog(text = stringResource(id = CommonStrings.common_please_wait))
             is AsyncData.Failure -> {
+                // Handled via callError / CallErrorDialog from the presenter
                 Timber.e(state.urlState.error, "WebView failed to load URL: ${state.urlState.error.message}")
-                ErrorDialog(
-                    content = state.urlState.error.message.orEmpty(),
-                    onSubmit = { state.eventSink(CallScreenEvent.Hangup) },
-                )
             }
             is AsyncData.Success -> Unit
         }
+    }
+}
+
+@Composable
+private fun CallErrorDialog(
+    error: CallScreenError,
+    canRetry: Boolean,
+    onRetry: () -> Unit,
+    onHangup: () -> Unit,
+) {
+    val title = when (error) {
+        CallScreenError.LoadTimeout -> stringResource(R.string.call_error_load_timeout_title)
+        is CallScreenError.WebView -> stringResource(R.string.call_error_webview_title)
+        is CallScreenError.Setup -> stringResource(R.string.call_error_setup_title)
+    }
+    val message = when (error) {
+        CallScreenError.LoadTimeout -> stringResource(R.string.call_error_load_timeout_message)
+        is CallScreenError.WebView -> buildString {
+            append(stringResource(CommonStrings.error_unknown))
+            error.details?.takeIf { it.isNotEmpty() }?.let { append("\n\n").append(it) }
+        }
+        is CallScreenError.Setup -> buildString {
+            append(stringResource(R.string.call_error_setup_message))
+            error.details?.takeIf { it.isNotEmpty() }?.let { append("\n\n").append(it) }
+        }
+    }
+    if (canRetry) {
+        ConfirmationDialog(
+            title = title,
+            content = message,
+            submitText = stringResource(CommonStrings.action_retry),
+            cancelText = stringResource(R.string.call_action_hangup),
+            onSubmitClick = onRetry,
+            onDismiss = onHangup,
+            onCancelClick = onHangup,
+        )
+    } else {
+        ErrorDialog(
+            title = title,
+            content = message,
+            onSubmit = onHangup,
+        )
     }
 }
 

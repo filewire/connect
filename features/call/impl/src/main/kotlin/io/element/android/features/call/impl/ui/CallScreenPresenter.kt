@@ -13,6 +13,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -22,6 +23,7 @@ import dev.zacsweers.metro.Assisted
 import dev.zacsweers.metro.AssistedFactory
 import dev.zacsweers.metro.AssistedInject
 import im.vector.app.features.analytics.plan.MobileScreen
+import io.element.android.appconfig.ElementCallConfig
 import io.element.android.features.call.api.CallData
 import io.element.android.features.call.impl.data.WidgetMessage
 import io.element.android.features.call.impl.utils.ActiveCallManager
@@ -81,7 +83,8 @@ class CallScreenPresenter(
         val messageInterceptor = remember { mutableStateOf<WidgetMessageInterceptor?>(null) }
         var isWidgetLoaded by rememberSaveable { mutableStateOf(false) }
         var ignoreWebViewError by rememberSaveable { mutableStateOf(false) }
-        var webViewError by remember { mutableStateOf<String?>(null) }
+        var callError by remember { mutableStateOf<CallScreenError?>(null) }
+        var loadAttempt by remember { mutableIntStateOf(0) }
         val languageTag = languageTagProvider.provideLanguageTag()
         val theme = "dark"
 
@@ -95,6 +98,9 @@ class CallScreenPresenter(
                     callWidgetDriver = callWidgetDriver,
                     languageTag = languageTag,
                     theme = theme,
+                    onSetupFailure = { details ->
+                        callError = CallScreenError.Setup(details)
+                    },
                 )
             }
             onDispose {
@@ -105,7 +111,7 @@ class CallScreenPresenter(
         HandleMatrixClientSyncState()
 
         callWidgetDriver.value?.let { driver ->
-            LaunchedEffect(Unit) {
+            LaunchedEffect(driver) {
                 driver.incomingMessages
                     .onEach {
                         // Relay message to the WebView
@@ -118,11 +124,12 @@ class CallScreenPresenter(
         }
 
         messageInterceptor.value?.let { interceptor ->
-            LaunchedEffect(Unit) {
+            LaunchedEffect(interceptor, loadAttempt) {
                 interceptor.interceptedMessages
                     .onEach {
                         // We are receiving messages from the WebView, consider that the application is loaded
                         ignoreWebViewError = true
+                        callError = null
                         // Relay message to Widget Driver
                         callWidgetDriver.value?.send(it)
 
@@ -138,16 +145,25 @@ class CallScreenPresenter(
                     .launchIn(this)
             }
 
-            LaunchedEffect(Unit) {
-                // Wait for the call to be joined, if it takes too long, we display an error
-                delay(10.seconds)
+            LaunchedEffect(interceptor, loadAttempt) {
+                // Wait for the call UI to become ready; slow JWT/ICE/network often exceeds a few seconds.
+                delay(ElementCallConfig.CALL_WIDGET_LOAD_TIMEOUT_SECONDS.seconds)
 
                 if (!isWidgetLoaded) {
-                    Timber.w("The call took too long to load. Displaying an error before exiting.")
-
-                    // This will display a simple 'Sorry, an error occurred' dialog and force the user to exit the call
-                    webViewError = ""
+                    Timber.w(
+                        "The call took more than %ds to load. Showing recoverable timeout error.",
+                        ElementCallConfig.CALL_WIDGET_LOAD_TIMEOUT_SECONDS,
+                    )
+                    callError = CallScreenError.LoadTimeout
                 }
+            }
+        }
+
+        // Surface URL setup failures that already ended in AsyncData.Failure
+        LaunchedEffect(urlState.value) {
+            val failure = urlState.value as? AsyncData.Failure ?: return@LaunchedEffect
+            if (callError == null) {
+                callError = CallScreenError.Setup(failure.error.message)
             }
         }
 
@@ -173,12 +189,38 @@ class CallScreenPresenter(
                         }
                     }
                 }
+                is CallScreenEvent.Retry -> {
+                    Timber.d("Retrying call setup for roomId: ${callData.roomId}")
+                    callError = null
+                    ignoreWebViewError = false
+                    isWidgetLoaded = false
+                    // Drop the previous interceptor/driver so load-timeout effects and
+                    // driver.run() cannot race against the new attempt.
+                    val previousDriver = callWidgetDriver.value
+                    messageInterceptor.value = null
+                    callWidgetDriver.value = null
+                    urlState.value = AsyncData.Uninitialized
+                    loadAttempt += 1
+                    coroutineScope.launch {
+                        previousDriver?.close()
+                        fetchRoomCallUrl(
+                            callData = callData,
+                            urlState = urlState,
+                            callWidgetDriver = callWidgetDriver,
+                            languageTag = languageTag,
+                            theme = theme,
+                            onSetupFailure = { details ->
+                                callError = CallScreenError.Setup(details)
+                            },
+                        )
+                    }
+                }
                 is CallScreenEvent.SetupMessageChannels -> {
                     messageInterceptor.value = event.widgetMessageInterceptor
                 }
                 is CallScreenEvent.OnWebViewError -> {
                     if (!ignoreWebViewError) {
-                        webViewError = event.description.orEmpty()
+                        callError = CallScreenError.WebView(event.description)
                     }
                     // Else ignore the error, give a chance the Element Call to recover by itself.
                 }
@@ -187,7 +229,7 @@ class CallScreenPresenter(
 
         return CallScreenState(
             urlState = urlState.value,
-            webViewError = webViewError,
+            callError = callError,
             userAgent = userAgent,
             isCallActive = isWidgetLoaded,
             eventSink = ::handleEvent,
@@ -200,6 +242,7 @@ class CallScreenPresenter(
         callWidgetDriver: MutableState<MatrixWidgetDriver?>,
         languageTag: String?,
         theme: String?,
+        onSetupFailure: (String?) -> Unit,
     ) {
         urlState.runCatchingUpdatingState {
             val result = callWidgetProvider.getWidget(
@@ -213,6 +256,9 @@ class CallScreenPresenter(
             callWidgetDriver.value = result.driver
             Timber.d("Call widget driver initialized for sessionId: ${callData.sessionId}, roomId: ${callData.roomId}")
             result.url
+        }.onFailure { error ->
+            Timber.e(error, "Failed to prepare call widget URL")
+            onSetupFailure(error.message)
         }
     }
 

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="call_error_load_timeout_title">Call is taking too long</string>
+    <string name="call_error_load_timeout_message">The call could not connect in time. This is often caused by a slow network or a delayed notification on the other device. You can try again.</string>
+    <string name="call_error_webview_title">Call failed to load</string>
+    <string name="call_error_setup_title">Could not start call</string>
+    <string name="call_error_setup_message">Something went wrong while preparing the call. Check your connection and try again.</string>
+    <string name="call_action_hangup">Hang up</string>
+</resources>

@@ -12,6 +12,7 @@ import io.element.android.features.call.impl.utils.WidgetMessageInterceptor
 
 sealed interface CallScreenEvent {
     data object Hangup : CallScreenEvent
+    data object Retry : CallScreenEvent
     data class SetupMessageChannels(val widgetMessageInterceptor: WidgetMessageInterceptor) : CallScreenEvent
     data class OnWebViewError(val description: String?) : CallScreenEvent
 }

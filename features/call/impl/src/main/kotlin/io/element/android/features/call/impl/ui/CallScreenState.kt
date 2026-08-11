@@ -10,10 +10,28 @@ package io.element.android.features.call.impl.ui
 
 import io.element.android.libraries.architecture.AsyncData
 
+/**
+ * Typed call-screen errors so the UI can show a clear title/message and Retry when useful.
+ */
+sealed interface CallScreenError {
+    /** Element Call WebView did not become ready within the load timeout. */
+    data object LoadTimeout : CallScreenError
+
+    /** WebView reported a load/HTTP/SSL failure before the call UI was ready. */
+    data class WebView(val details: String?) : CallScreenError
+
+    /** Widget URL / MatrixRTC setup failed before the WebView could start. */
+    data class Setup(val details: String?) : CallScreenError
+}
+
 data class CallScreenState(
     val urlState: AsyncData<String>,
-    val webViewError: String?,
+    val callError: CallScreenError?,
     val userAgent: String,
     val isCallActive: Boolean,
     val eventSink: (CallScreenEvent) -> Unit,
-)
+) {
+    /** All current call errors offer Retry; the user can also hang up. */
+    val canRetryError: Boolean
+        get() = callError != null
+}

@@ -14,6 +14,7 @@ import app.cash.turbine.test
 import com.google.common.truth.Truth.assertThat
 import im.vector.app.features.analytics.plan.MobileScreen
 import io.element.android.features.call.api.CallData
+import io.element.android.features.call.impl.ui.CallScreenError
 import io.element.android.features.call.impl.ui.CallScreenEvent
 import io.element.android.features.call.impl.ui.CallScreenNavigator
 import io.element.android.features.call.impl.ui.CallScreenPresenter
@@ -242,13 +243,13 @@ class CallScreenPresenterTest {
             skipItems(2)
 
             // Wait for the timeout to trigger
-            advanceTimeBy(10.seconds)
+            advanceTimeBy(45.seconds)
 
             val finalState = awaitItem()
             assertThat(finalState.isCallActive).isFalse()
-            // The error dialog that will force the user to leave the call is displayed
-            assertThat(finalState.webViewError).isNotNull()
-            assertThat(finalState.webViewError).isEmpty()
+            // Recoverable timeout dialog that lets the user retry or hang up
+            assertThat(finalState.callError).isEqualTo(CallScreenError.LoadTimeout)
+            assertThat(finalState.canRetryError).isTrue()
         }
     }
 
