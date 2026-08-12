@@ -140,6 +140,7 @@ class CallScreenPresenter(
                                 close(callWidgetDriver.value, navigator)
                             } else if (parsedMessage.action == WidgetMessage.Action.ContentLoaded) {
                                 isWidgetLoaded = true
+                                activeCallManager.clearForceStartNewCall(callData.roomId)
                             }
                         }
                     }
@@ -260,9 +261,6 @@ class CallScreenPresenter(
                 theme = theme,
                 forceStartNewCall = forceStartNewCall,
             ).getOrThrow()
-            if (forceStartNewCall) {
-                activeCallManager.clearForceStartNewCall(callData.roomId)
-            }
             callWidgetDriver.value = result.driver
             Timber.d("Call widget driver initialized for sessionId: ${callData.sessionId}, roomId: ${callData.roomId}")
             result.url

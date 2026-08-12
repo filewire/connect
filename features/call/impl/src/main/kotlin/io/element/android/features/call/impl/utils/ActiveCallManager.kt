@@ -352,6 +352,16 @@ class DefaultActiveCallManager(
     private suspend fun waitForRoomCallIdle(callData: CallData) {
         if (lastHangUpRoomId != callData.roomId) return
 
+        // After a local hang-up we force START_CALL (see recordHangUp), so waiting for
+        // hasRoomCall to clear is unnecessary — the remote may keep ringing for a while.
+        if (forceStartNewCallRoomId == callData.roomId) {
+            Timber.tag(tag).d(
+                "Skipping room idle wait for %s; post-hang-up recall uses START_CALL",
+                callData.roomId,
+            )
+            return
+        }
+
         val client = matrixClientProvider.getOrRestore(callData.sessionId).getOrNull() ?: return
         val room = client.getRoom(callData.roomId) ?: return
 

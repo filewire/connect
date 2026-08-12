@@ -47,6 +47,8 @@ import io.element.android.features.call.impl.pip.PictureInPicturePresenter
 import io.element.android.features.call.impl.pip.PictureInPictureState
 import io.element.android.features.call.impl.pip.PipView
 import io.element.android.features.call.impl.services.CallForegroundService
+import io.element.android.features.call.impl.utils.ActiveCallManager
+import io.element.android.features.call.impl.utils.CallState
 import io.element.android.features.enterprise.api.EnterpriseService
 import io.element.android.libraries.androidutils.browser.ConsoleMessageLogger
 import io.element.android.libraries.architecture.Presenter
@@ -75,6 +77,7 @@ class ElementCallActivity :
     @Inject lateinit var buildMeta: BuildMeta
     @Inject lateinit var audioFocus: AudioFocus
     @Inject lateinit var consoleMessageLogger: ConsoleMessageLogger
+    @Inject lateinit var activeCallManager: ActiveCallManager
 
     private lateinit var presenter: Presenter<CallScreenState>
 
@@ -255,8 +258,17 @@ class ElementCallActivity :
                 setIntent(intent)
                 recreate()
             } else {
-                // Starting the same call again, should not happen, the UI is preventing this. But maybe when using external links.
-                Timber.tag(loggerTag.value).d("Starting the same call again, do nothing")
+                val isLiveCall = activeCallManager.activeCall.value?.let { active ->
+                    active.callData == callData && active.callState is CallState.InCall &&
+                        !activeCallManager.shouldForceStartNewCall(callData.roomId)
+                } == true
+                if (isLiveCall) {
+                    Timber.tag(loggerTag.value).d("Same call already active, bringing activity to front")
+                } else {
+                    Timber.tag(loggerTag.value).d("Restarting call UI for the same room")
+                    setIntent(intent)
+                    recreate()
+                }
             }
         }
     }

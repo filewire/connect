@@ -19,6 +19,7 @@ class FakeCallWidgetProvider(
 ) : CallWidgetProvider {
     var getWidgetCalled = false
         private set
+    val forceStartNewCallArgs = mutableListOf<Boolean>()
 
     override suspend fun getWidget(
         sessionId: SessionId,
@@ -30,6 +31,7 @@ class FakeCallWidgetProvider(
         forceStartNewCall: Boolean,
     ): Result<CallWidgetProvider.GetWidgetResult> {
         getWidgetCalled = true
+        forceStartNewCallArgs += forceStartNewCall
         return Result.success(
             CallWidgetProvider.GetWidgetResult(
                 driver = widgetDriver,

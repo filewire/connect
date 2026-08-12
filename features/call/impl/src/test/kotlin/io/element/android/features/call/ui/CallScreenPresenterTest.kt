@@ -223,6 +223,57 @@ class CallScreenPresenterTest {
     }
 
     @Test
+    fun `present - retry keeps force start until content loaded`() = runTest {
+        val navigator = FakeCallScreenNavigator()
+        val widgetDriver = FakeMatrixWidgetDriver()
+        val widgetProvider = FakeCallWidgetProvider(widgetDriver)
+        var forceStart = true
+        val activeCallManager = FakeActiveCallManager(
+            shouldForceStartNewCallResult = { forceStart },
+            clearForceStartNewCallResult = { forceStart = false },
+        )
+        val presenter = createCallScreenPresenter(
+            callData = CallData(A_SESSION_ID, A_ROOM_ID, false),
+            widgetDriver = widgetDriver,
+            widgetProvider = widgetProvider,
+            navigator = navigator,
+            dispatchers = testCoroutineDispatchers(useUnconfinedTestDispatcher = true),
+            activeCallManager = activeCallManager,
+            screenTracker = FakeScreenTracker {},
+        )
+        val messageInterceptor = FakeWidgetMessageInterceptor()
+        presenter.test {
+            advanceTimeBy(1.seconds)
+            skipItems(2)
+            val initialState = awaitItem()
+            assertThat(widgetProvider.forceStartNewCallArgs).containsExactly(true)
+            initialState.eventSink(CallScreenEvent.SetupMessageChannels(messageInterceptor))
+            skipItems(2)
+
+            initialState.eventSink(CallScreenEvent.Retry)
+            advanceTimeBy(1.seconds)
+            skipItems(1)
+
+            assertThat(widgetProvider.forceStartNewCallArgs).containsExactly(true, true)
+
+            messageInterceptor.givenInterceptedMessage(
+                """
+                    {
+                        "action":"content_loaded",
+                        "api":"fromWidget",
+                        "widgetId":"1",
+                        "requestId":"1"
+                    }
+                """.trimIndent()
+            )
+            skipItems(1)
+            assertThat(forceStart).isFalse()
+
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
     fun `present - if in room mode and no join action is received an error is displayed`() = runTest {
         val navigator = FakeCallScreenNavigator()
         val widgetDriver = FakeMatrixWidgetDriver()

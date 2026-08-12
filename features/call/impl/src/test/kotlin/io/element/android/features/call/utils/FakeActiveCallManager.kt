@@ -22,6 +22,8 @@ class FakeActiveCallManager(
     var hangUpCallResult: (CallData, CallNotificationData?) -> Unit = { _, _ -> },
     var joinedCallResult: (CallData) -> Unit = {},
     var awaitReadyForOutgoingCallResult: (CallData) -> OutgoingCallGate = { OutgoingCallGate.Proceed },
+    var shouldForceStartNewCallResult: (RoomId) -> Boolean = { false },
+    var clearForceStartNewCallResult: (RoomId) -> Unit = {},
 ) : ActiveCallManager {
     override val activeCall = MutableStateFlow<ActiveCall?>(null)
 
@@ -41,9 +43,11 @@ class FakeActiveCallManager(
         awaitReadyForOutgoingCallResult(callData)
     }
 
-    override fun shouldForceStartNewCall(roomId: RoomId): Boolean = false
+    override fun shouldForceStartNewCall(roomId: RoomId): Boolean = shouldForceStartNewCallResult(roomId)
 
-    override fun clearForceStartNewCall(roomId: RoomId) = Unit
+    override fun clearForceStartNewCall(roomId: RoomId) {
+        clearForceStartNewCallResult(roomId)
+    }
 
     fun setActiveCall(value: ActiveCall?) {
         this.activeCall.value = value

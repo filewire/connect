@@ -552,7 +552,7 @@ class DefaultActiveCallManagerTest : RobolectricTest() {
 
     @OptIn(ExperimentalCoroutinesApi::class)
     @Test
-    fun `awaitReadyForOutgoingCall - waits until room call is idle`() = runTest {
+    fun `awaitReadyForOutgoingCall - skips room idle wait when forcing start after hang up`() = runTest {
         val room = FakeJoinedRoom(
             baseRoom = FakeBaseRoom().apply {
                 givenRoomInfo(
@@ -575,6 +575,38 @@ class DefaultActiveCallManagerTest : RobolectricTest() {
         manager.hangUpCall(callData)
         assertThat(manager.shouldForceStartNewCall(A_ROOM_ID)).isTrue()
 
+        val gate = manager.awaitReadyForOutgoingCall(callData)
+
+        assertThat(gate).isEqualTo(OutgoingCallGate.Proceed)
+        assertThat(manager.shouldForceStartNewCall(A_ROOM_ID)).isTrue()
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `awaitReadyForOutgoingCall - waits until room call is idle when not forcing start`() = runTest {
+        val room = FakeJoinedRoom(
+            baseRoom = FakeBaseRoom().apply {
+                givenRoomInfo(
+                    aRoomInfo(
+                        hasRoomCall = true,
+                        activeRoomCallParticipants = listOf(A_SESSION_ID),
+                    ),
+                )
+            },
+        )
+        val client = FakeMatrixClient(sessionId = A_SESSION_ID).apply {
+            givenGetRoomResult(A_ROOM_ID, room)
+        }
+        val manager = createActiveCallManager(
+            matrixClientProvider = FakeMatrixClientProvider(getClient = { Result.success(client) }),
+        )
+        val callData = CallData(A_SESSION_ID, A_ROOM_ID, isAudioCall = true)
+
+        // Simulate a stale room call without a local hang-up (no force-START flag).
+        room.baseRoom.givenRoomInfo(
+            aRoomInfo(hasRoomCall = true, activeRoomCallParticipants = listOf(A_SESSION_ID)),
+        )
+
         val gateDeferred = backgroundScope.async {
             manager.awaitReadyForOutgoingCall(callData)
         }
@@ -588,8 +620,6 @@ class DefaultActiveCallManagerTest : RobolectricTest() {
         runCurrent()
 
         assertThat(gateDeferred.await()).isEqualTo(OutgoingCallGate.Proceed)
-        assertThat(manager.shouldForceStartNewCall(A_ROOM_ID)).isTrue()
-        manager.clearForceStartNewCall(A_ROOM_ID)
         assertThat(manager.shouldForceStartNewCall(A_ROOM_ID)).isFalse()
     }
 
