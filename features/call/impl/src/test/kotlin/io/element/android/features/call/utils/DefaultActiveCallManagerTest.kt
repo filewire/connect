@@ -552,7 +552,7 @@ class DefaultActiveCallManagerTest : RobolectricTest() {
 
     @OptIn(ExperimentalCoroutinesApi::class)
     @Test
-    fun `awaitReadyForOutgoingCall - skips room idle wait when forcing start after hang up`() = runTest {
+    fun `awaitReadyForOutgoingCall - waits for session to leave participants after hang up even when forcing start`() = runTest {
         val room = FakeJoinedRoom(
             baseRoom = FakeBaseRoom().apply {
                 givenRoomInfo(
@@ -575,9 +575,22 @@ class DefaultActiveCallManagerTest : RobolectricTest() {
         manager.hangUpCall(callData)
         assertThat(manager.shouldForceStartNewCall(A_ROOM_ID)).isTrue()
 
-        val gate = manager.awaitReadyForOutgoingCall(callData)
+        val gateDeferred = backgroundScope.async {
+            manager.awaitReadyForOutgoingCall(callData)
+        }
+        runCurrent()
+        assertThat(gateDeferred.isCompleted).isFalse()
 
-        assertThat(gate).isEqualTo(OutgoingCallGate.Proceed)
+        room.baseRoom.givenRoomInfo(
+            aRoomInfo(
+                hasRoomCall = true,
+                activeRoomCallParticipants = emptyList(),
+            ),
+        )
+        advanceTimeBy(5_000)
+        runCurrent()
+
+        assertThat(gateDeferred.await()).isEqualTo(OutgoingCallGate.Proceed)
         assertThat(manager.shouldForceStartNewCall(A_ROOM_ID)).isTrue()
     }
 

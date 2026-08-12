@@ -346,36 +346,45 @@ class DefaultActiveCallManager(
 
     /**
      * After a local hang-up, MatrixRTC membership / room call flag can linger (MSC4140 delayed leave,
-     * remote still ringing). Starting with JOIN_EXISTING against that state leaves Element Call stuck
-     * on a blank "Please wait" until load timeout.
+     * remote still ringing). Wait until our session is no longer listed as an active participant
+     * before opening another outgoing call in the same room.
      */
     private suspend fun waitForRoomCallIdle(callData: CallData) {
         if (lastHangUpRoomId != callData.roomId) return
 
-        // After a local hang-up we force START_CALL (see recordHangUp), so waiting for
-        // hasRoomCall to clear is unnecessary — the remote may keep ringing for a while.
-        if (forceStartNewCallRoomId == callData.roomId) {
-            Timber.tag(tag).d(
-                "Skipping room idle wait for %s; post-hang-up recall uses START_CALL",
-                callData.roomId,
-            )
-            return
-        }
-
         val client = matrixClientProvider.getOrRestore(callData.sessionId).getOrNull() ?: return
         val room = client.getRoom(callData.roomId) ?: return
 
+        val forcingStart = forceStartNewCallRoomId == callData.roomId
+        if (forcingStart) {
+            Timber.tag(tag).d(
+                "Waiting for local session to leave MatrixRTC in %s before recall (force START_CALL)",
+                callData.roomId,
+            )
+        }
+
         val becameIdle = withTimeoutOrNull(ElementCallConfig.CALL_LEAVE_SETTLE_MAX_SECONDS.seconds) {
-            while (room.roomInfoFlow.first().hasRoomCall) {
+            while (true) {
+                val roomInfo = room.roomInfoFlow.first()
+                val sessionStillInCall = callData.sessionId in roomInfo.activeRoomCallParticipants
+                if (!sessionStillInCall) {
+                    if (!roomInfo.hasRoomCall || forcingStart) {
+                        break
+                    }
+                }
                 delay(500)
             }
-            Timber.tag(tag).d("Room call idle in %s, safe to start a new call", callData.roomId)
+            Timber.tag(tag).d(
+                "Room call idle for session in %s (forceStart=%s), safe to start a new call",
+                callData.roomId,
+                forcingStart,
+            )
             true
         } == true
 
         if (!becameIdle) {
             Timber.tag(tag).w(
-                "Timed out after %ds waiting for room call idle in %s; will force START_CALL intent",
+                "Timed out after %ds waiting for session to leave call in %s; proceeding with START_CALL",
                 ElementCallConfig.CALL_LEAVE_SETTLE_MAX_SECONDS,
                 callData.roomId,
             )
@@ -398,6 +407,10 @@ class DefaultActiveCallManager(
         lastHangUpRoomId = callData.roomId
         lastHangUpEpochMillis = systemClock.epochMillis()
         forceStartNewCallRoomId = callData.roomId
+        Timber.tag(tag).d(
+            "Recorded local hang-up for roomId=%s; next outgoing call will use START_CALL until content_loaded",
+            callData.roomId,
+        )
     }
 
     private fun rejoinCooldownRemainingMs(callData: CallData): Long {

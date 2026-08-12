@@ -144,7 +144,7 @@ class CallScreenPresenterTest {
             initialState.eventSink(CallScreenEvent.Hangup)
 
             // Grace period before closing when hangup was sent to the WebView
-            advanceTimeBy(5.seconds)
+            advanceTimeBy(8.seconds)
             runCurrent()
 
             assertThat(navigator.closeCalled).isTrue()
@@ -176,8 +176,8 @@ class CallScreenPresenterTest {
 
             messageInterceptor.givenInterceptedMessage("""{"action":"io.element.close","api":"fromWidget","widgetId":"1","requestId":"1"}""")
 
-            // Let background coroutines run
-            advanceTimeBy(1.seconds)
+            // Grace period so MatrixRTC leave can finish before the WebView is destroyed
+            advanceTimeBy(8.seconds)
             runCurrent()
 
             assertThat(navigator.closeCalled).isTrue()
