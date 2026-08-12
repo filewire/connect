@@ -18,6 +18,7 @@ import io.element.android.libraries.matrix.api.widget.CallWidgetSettingsProvider
 import io.element.android.libraries.preferences.api.store.AppPreferencesStore
 import io.element.android.services.appnavstate.api.ActiveRoomsHolder
 import kotlinx.coroutines.flow.firstOrNull
+import timber.log.Timber
 
 private const val EMBEDDED_CALL_WIDGET_BASE_URL = "https://appassets.androidplatform.net/element-call/index.html"
 
@@ -35,6 +36,7 @@ class DefaultCallWidgetProvider(
         clientId: String,
         languageTag: String?,
         theme: String?,
+        forceStartNewCall: Boolean,
     ): Result<CallWidgetProvider.GetWidgetResult> = runCatchingExceptions {
         val matrixClient = matrixClientsProvider.getOrRestore(sessionId).getOrThrow()
         val room = activeRoomsHolder.getActiveRoomMatching(sessionId, roomId)
@@ -46,12 +48,21 @@ class DefaultCallWidgetProvider(
 
         val roomInfo = room.info()
         val isEncrypted = roomInfo.isEncrypted ?: room.getUpdatedIsEncrypted().getOrThrow()
+        // After a local hang-up, hasRoomCall can stay true (delayed leave / remote still ringing).
+        // JOIN_EXISTING against that zombie state never reaches content_loaded.
+        val hasActiveCall = roomInfo.hasRoomCall && !forceStartNewCall
+        if (forceStartNewCall && roomInfo.hasRoomCall) {
+            Timber.w(
+                "Forcing START_CALL for %s despite hasRoomCall=true (stale MatrixRTC session)",
+                roomId,
+            )
+        }
         val widgetSettings = callWidgetSettingsProvider.provide(
             baseUrl = baseUrl,
             encrypted = isEncrypted,
             direct = room.isDm(),
             isAudioCall = isAudioCall,
-            hasActiveCall = roomInfo.hasRoomCall,
+            hasActiveCall = hasActiveCall,
         )
         val callUrl = room.generateWidgetWebViewUrl(
             widgetSettings = widgetSettings,

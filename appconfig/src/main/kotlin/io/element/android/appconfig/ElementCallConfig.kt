@@ -35,8 +35,9 @@ object ElementCallConfig {
     const val CALL_HANGUP_GRACE_SECONDS = 5
 
     /**
-     * Max time to wait for our session to leave the room's active call participants list
+     * Max time to wait for the room call to go idle (`hasRoomCall == false`)
      * before opening a new outgoing call in the same room.
+     * Covers MSC4140 delayed leave and remote clients that keep ringing briefly.
      */
-    const val CALL_LEAVE_SETTLE_MAX_SECONDS = 20
+    const val CALL_LEAVE_SETTLE_MAX_SECONDS = 35
 }

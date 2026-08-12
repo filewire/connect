@@ -13,6 +13,7 @@ import io.element.android.features.call.impl.notifications.CallNotificationData
 import io.element.android.features.call.impl.utils.ActiveCall
 import io.element.android.features.call.impl.utils.ActiveCallManager
 import io.element.android.features.call.impl.utils.OutgoingCallGate
+import io.element.android.libraries.matrix.api.core.RoomId
 import io.element.android.tests.testutils.simulateLongTask
 import kotlinx.coroutines.flow.MutableStateFlow
 
@@ -39,6 +40,10 @@ class FakeActiveCallManager(
     override suspend fun awaitReadyForOutgoingCall(callData: CallData): OutgoingCallGate = simulateLongTask {
         awaitReadyForOutgoingCallResult(callData)
     }
+
+    override fun shouldForceStartNewCall(roomId: RoomId): Boolean = false
+
+    override fun clearForceStartNewCall(roomId: RoomId) = Unit
 
     fun setActiveCall(value: ActiveCall?) {
         this.activeCall.value = value

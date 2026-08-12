@@ -18,8 +18,10 @@ import io.element.android.libraries.matrix.test.FakeMatrixClient
 import io.element.android.libraries.matrix.test.FakeMatrixClientProvider
 import io.element.android.libraries.matrix.test.room.FakeBaseRoom
 import io.element.android.libraries.matrix.test.room.FakeJoinedRoom
+import io.element.android.libraries.matrix.test.room.aRoomInfo
 import io.element.android.libraries.matrix.test.widget.FakeCallWidgetSettingsProvider
 import io.element.android.libraries.matrix.test.widget.FakeMatrixWidgetDriver
+import io.element.android.libraries.matrix.api.widget.MatrixWidgetSettings
 import io.element.android.libraries.preferences.api.store.AppPreferencesStore
 import io.element.android.libraries.preferences.test.InMemoryAppPreferencesStore
 import io.element.android.services.appnavstate.api.ActiveRoomsHolder
@@ -125,6 +127,40 @@ class DefaultCallWidgetProviderTest {
         provider.getWidget(A_SESSION_ID, A_ROOM_ID, false, "clientId", "languageTag", "theme")
 
         assertThat(settingsProvider.providedBaseUrls).containsExactly("https://custom.element.io")
+    }
+
+    @Test
+    fun `getWidget - forceStartNewCall ignores sticky hasRoomCall`() = runTest {
+        val room = FakeJoinedRoom(
+            baseRoom = FakeBaseRoom(initialRoomInfo = aRoomInfo(hasRoomCall = true)),
+            generateWidgetWebViewUrlResult = { _, _, _, _ -> Result.success("url") },
+            getWidgetDriverResult = { Result.success(FakeMatrixWidgetDriver()) },
+        )
+        val client = FakeMatrixClient().apply {
+            givenGetRoomResult(A_ROOM_ID, room)
+        }
+        val hasActiveCallArgs = mutableListOf<Boolean>()
+        val settingsProvider = FakeCallWidgetSettingsProvider { _, _, _, _, _, hasActiveCall ->
+            hasActiveCallArgs += hasActiveCall
+            MatrixWidgetSettings("id", true, "url")
+        }
+        val provider = createProvider(
+            matrixClientProvider = FakeMatrixClientProvider { Result.success(client) },
+            callWidgetSettingsProvider = settingsProvider,
+        )
+
+        assertThat(
+            provider.getWidget(
+                sessionId = A_SESSION_ID,
+                roomId = A_ROOM_ID,
+                isAudioCall = true,
+                clientId = "clientId",
+                languageTag = "languageTag",
+                theme = "theme",
+                forceStartNewCall = true,
+            ).isSuccess
+        ).isTrue()
+        assertThat(hasActiveCallArgs).containsExactly(false)
     }
 
     private fun createProvider(

@@ -98,6 +98,18 @@ interface ActiveCallManager {
      * Rapid hang-up → recall races Element Call WebView teardown; the cooldown reduces that race.
      */
     suspend fun awaitReadyForOutgoingCall(callData: CallData): OutgoingCallGate
+
+    /**
+     * After a local hang-up, MatrixRTC may still report an active room call.
+     * Returning true forces Element Call to use a START intent instead of JOIN_EXISTING,
+     * which otherwise hangs on a zombie session (blank "Please wait" then load timeout).
+     */
+    fun shouldForceStartNewCall(roomId: RoomId): Boolean
+
+    /**
+     * Clear the force-START flag once the new call widget URL has been built.
+     */
+    fun clearForceStartNewCall(roomId: RoomId)
 }
 
 /**
@@ -135,6 +147,12 @@ class DefaultActiveCallManager(
     /** Room + timestamp of the last local hang-up, used for rejoin cooldown. */
     private var lastHangUpRoomId: RoomId? = null
     private var lastHangUpEpochMillis: Long = 0L
+
+    /**
+     * After hang-up, force Element Call START intent until we successfully join again
+     * (avoids JOIN_EXISTING against a sticky / zombie MatrixRTC session).
+     */
+    private var forceStartNewCallRoomId: RoomId? = null
 
     @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
     internal val activeWakeLock: PowerManager.WakeLock? = context.getSystemService<PowerManager>()
@@ -311,34 +329,43 @@ class DefaultActiveCallManager(
             delay(remainingMs)
         }
 
-        waitForLocalCallLeave(callData)
+        waitForRoomCallIdle(callData)
 
         return evaluateOutgoingGate(callData) ?: OutgoingCallGate.Proceed
     }
 
+    override fun shouldForceStartNewCall(roomId: RoomId): Boolean {
+        return forceStartNewCallRoomId == roomId
+    }
+
+    override fun clearForceStartNewCall(roomId: RoomId) {
+        if (forceStartNewCallRoomId == roomId) {
+            forceStartNewCallRoomId = null
+        }
+    }
+
     /**
-     * After a local hang-up, MatrixRTC membership can linger (MSC4140 delayed leave).
-     * Starting a new call before we have left causes a blank WebView and load timeout.
-     *
-     * Uses coroutine timeout (not wall clock) so unit tests with a frozen [SystemClock] still complete.
+     * After a local hang-up, MatrixRTC membership / room call flag can linger (MSC4140 delayed leave,
+     * remote still ringing). Starting with JOIN_EXISTING against that state leaves Element Call stuck
+     * on a blank "Please wait" until load timeout.
      */
-    private suspend fun waitForLocalCallLeave(callData: CallData) {
+    private suspend fun waitForRoomCallIdle(callData: CallData) {
         if (lastHangUpRoomId != callData.roomId) return
 
         val client = matrixClientProvider.getOrRestore(callData.sessionId).getOrNull() ?: return
         val room = client.getRoom(callData.roomId) ?: return
 
-        val leftInTime = withTimeoutOrNull(ElementCallConfig.CALL_LEAVE_SETTLE_MAX_SECONDS.seconds) {
-            while (callData.sessionId in room.roomInfoFlow.first().activeRoomCallParticipants) {
+        val becameIdle = withTimeoutOrNull(ElementCallConfig.CALL_LEAVE_SETTLE_MAX_SECONDS.seconds) {
+            while (room.roomInfoFlow.first().hasRoomCall) {
                 delay(500)
             }
-            Timber.tag(tag).d("Local session left room call in %s, safe to rejoin", callData.roomId)
+            Timber.tag(tag).d("Room call idle in %s, safe to start a new call", callData.roomId)
             true
         } == true
 
-        if (!leftInTime) {
+        if (!becameIdle) {
             Timber.tag(tag).w(
-                "Timed out after %ds waiting for local session to leave room call in %s",
+                "Timed out after %ds waiting for room call idle in %s; will force START_CALL intent",
                 ElementCallConfig.CALL_LEAVE_SETTLE_MAX_SECONDS,
                 callData.roomId,
             )
@@ -360,6 +387,7 @@ class DefaultActiveCallManager(
     private fun recordHangUp(callData: CallData) {
         lastHangUpRoomId = callData.roomId
         lastHangUpEpochMillis = systemClock.epochMillis()
+        forceStartNewCallRoomId = callData.roomId
     }
 
     private fun rejoinCooldownRemainingMs(callData: CallData): Long {

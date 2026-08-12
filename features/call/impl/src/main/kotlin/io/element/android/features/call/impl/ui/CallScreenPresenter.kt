@@ -250,6 +250,7 @@ class CallScreenPresenter(
         onSetupFailure: (String?) -> Unit,
     ) {
         urlState.runCatchingUpdatingState {
+            val forceStartNewCall = activeCallManager.shouldForceStartNewCall(callData.roomId)
             val result = callWidgetProvider.getWidget(
                 sessionId = callData.sessionId,
                 roomId = callData.roomId,
@@ -257,7 +258,11 @@ class CallScreenPresenter(
                 isAudioCall = callData.isAudioCall,
                 languageTag = languageTag,
                 theme = theme,
+                forceStartNewCall = forceStartNewCall,
             ).getOrThrow()
+            if (forceStartNewCall) {
+                activeCallManager.clearForceStartNewCall(callData.roomId)
+            }
             callWidgetDriver.value = result.driver
             Timber.d("Call widget driver initialized for sessionId: ${callData.sessionId}, roomId: ${callData.roomId}")
             result.url

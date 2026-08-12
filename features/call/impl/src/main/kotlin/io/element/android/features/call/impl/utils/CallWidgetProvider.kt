@@ -20,6 +20,7 @@ interface CallWidgetProvider {
         clientId: String,
         languageTag: String?,
         theme: String?,
+        forceStartNewCall: Boolean = false,
     ): Result<GetWidgetResult>
 
     data class GetWidgetResult(
