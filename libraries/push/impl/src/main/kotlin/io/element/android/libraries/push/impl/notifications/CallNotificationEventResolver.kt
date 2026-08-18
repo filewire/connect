@@ -19,15 +19,6 @@ import io.element.android.libraries.matrix.api.notification.NotificationContent
 import io.element.android.libraries.matrix.api.notification.NotificationData
 import io.element.android.libraries.matrix.api.notification.RtcNotificationType
 import io.element.android.libraries.matrix.api.timeline.item.event.EventType
-import io.element.android.libraries.push.impl.R
-import io.element.android.libraries.push.impl.notifications.model.NotifiableEvent
-import io.element.android.libraries.push.impl.notifications.model.NotifiableRingingCallEvent
-import io.element.android.services.appnavstate.api.AppForegroundStateService
-import io.element.android.services.toolbox.api.strings.StringProvider
-import kotlinx.coroutines.flow.firstOrNull
-import kotlinx.coroutines.withTimeoutOrNull
-import timber.log.Timber
-import kotlin.time.Duration.Companion.seconds
 
 /**
  * Helper to resolve a valid [NotifiableEvent] from a [NotificationData].
@@ -61,36 +52,16 @@ class DefaultCallNotificationEventResolver(
         val content = notificationData.content as? NotificationContent.MessageLike.RtcNotification
             ?: throw NotificationResolverException.UnknownError("content is not a call notify")
 
-        val previousRingingCallStatus = appForegroundStateService.hasRingingCall.value
-        // We need the sync service working to get the updated room info
-        val isRoomCallActive = runCatchingExceptions {
-            if (content.type == RtcNotificationType.RING) {
-                appForegroundStateService.updateHasRingingCall(true)
+        // RING should ring immediately. Waiting for hasRoomCall delayed incoming calls by seconds
+        // even when chat messages already arrive in 1–4s.
+        val shouldRing = content.type == RtcNotificationType.RING && !forceNotify
 
-                val client = clientProvider.getOrRestore(
-                    sessionId
-                ).getOrNull() ?: throw NotificationResolverException.UnknownError("Session $sessionId not found")
-                val room = client.getRoom(
-                    notificationData.roomId
-                ) ?: throw NotificationResolverException.UnknownError("Room ${notificationData.roomId} not found")
-                // Give a few seconds for the room info flow to catch up with the sync, if needed - this is usually instant
-                val isActive = withTimeoutOrNull(3.seconds) { room.roomInfoFlow.firstOrNull { it.hasRoomCall } }?.hasRoomCall ?: false
-
-                // We no longer need the sync service to be active because of a call notification.
-                appForegroundStateService.updateHasRingingCall(previousRingingCallStatus)
-
-                isActive
-            } else {
-                // If the call notification is not of ringing type, we don't need to check if the call is active
-                false
-            }
-        }.onFailure {
-            // Make sure to reset the hasRingingCall state in case of failure
-            appForegroundStateService.updateHasRingingCall(previousRingingCallStatus)
-        }.getOrDefault(false)
+        if (shouldRing) {
+            appForegroundStateService.updateHasRingingCall(true)
+        }
 
         notificationData.run {
-            if (content.type == RtcNotificationType.RING && isRoomCallActive && !forceNotify) {
+            if (shouldRing) {
                 Timber.d("Ringing call notification intent ${content.callIntent} in room $roomId")
                 NotifiableRingingCallEvent(
                     sessionId = sessionId,
@@ -119,7 +90,7 @@ class DefaultCallNotificationEventResolver(
                     expirationTimestamp = content.expirationTimestampMillis,
                 )
             } else {
-                Timber.d("Event $eventId is call notify but should not ring: $isRoomCallActive, notify: ${content.type}")
+                Timber.d("Event $eventId is call notify but should not ring, notify: ${content.type}")
                 // Create a simple message notification event
                 buildNotifiableMessageEvent(
                     sessionId = sessionId,

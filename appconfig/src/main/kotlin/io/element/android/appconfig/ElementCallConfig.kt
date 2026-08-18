@@ -34,14 +34,12 @@ object ElementCallConfig {
     const val CALL_HANGUP_MIN_GRACE_SECONDS = 2
 
     /**
-     * Max time to poll for MatrixRTC leave after hang-up (MSC4140 delayed leave).
-     * WebView stays alive during this window so leave can complete on the server.
+     * Max time to poll for MatrixRTC leave when needed. Hang-up UI no longer blocks on this.
      */
     const val CALL_LEAVE_SETTLE_MAX_SECONDS = 25
 
     /**
-     * When recalling after hang-up, max time to wait for room idle inside the call UI
-     * (user already sees Please wait) before loading the widget with START_CALL.
+     * Reserved for optional recall idle wait. Hang-up / recall UI does not block on this.
      */
     const val CALL_RECALL_IDLE_WAIT_MAX_SECONDS = 8
 
