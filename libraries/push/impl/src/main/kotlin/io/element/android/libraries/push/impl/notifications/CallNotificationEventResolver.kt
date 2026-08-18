@@ -19,6 +19,12 @@ import io.element.android.libraries.matrix.api.notification.NotificationContent
 import io.element.android.libraries.matrix.api.notification.NotificationData
 import io.element.android.libraries.matrix.api.notification.RtcNotificationType
 import io.element.android.libraries.matrix.api.timeline.item.event.EventType
+import io.element.android.libraries.push.impl.R
+import io.element.android.libraries.push.impl.notifications.model.NotifiableEvent
+import io.element.android.libraries.push.impl.notifications.model.NotifiableRingingCallEvent
+import io.element.android.services.appnavstate.api.AppForegroundStateService
+import io.element.android.services.toolbox.api.strings.StringProvider
+import timber.log.Timber
 
 /**
  * Helper to resolve a valid [NotifiableEvent] from a [NotificationData].
@@ -42,6 +48,7 @@ interface CallNotificationEventResolver {
 class DefaultCallNotificationEventResolver(
     private val stringProvider: StringProvider,
     private val appForegroundStateService: AppForegroundStateService,
+    @Suppress("unused")
     private val clientProvider: MatrixClientProvider,
 ) : CallNotificationEventResolver {
     override suspend fun resolveEvent(
