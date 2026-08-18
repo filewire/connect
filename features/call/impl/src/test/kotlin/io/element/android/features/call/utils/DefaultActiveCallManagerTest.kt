@@ -544,7 +544,7 @@ class DefaultActiveCallManagerTest : RobolectricTest() {
         runCurrent()
         assertThat(gateDeferred.isCompleted).isFalse()
 
-        advanceTimeBy(5_000)
+        advanceTimeBy(2_000)
         runCurrent()
 
         assertThat(gateDeferred.await()).isEqualTo(OutgoingCallGate.Proceed)
@@ -552,7 +552,43 @@ class DefaultActiveCallManagerTest : RobolectricTest() {
 
     @OptIn(ExperimentalCoroutinesApi::class)
     @Test
-    fun `awaitReadyForOutgoingCall - waits for session to leave participants after hang up even when forcing start`() = runTest {
+    fun `waitForMatrixRtcRoomIdle - returns when room call clears`() = runTest {
+        val room = FakeJoinedRoom(
+            baseRoom = FakeBaseRoom().apply {
+                givenRoomInfo(
+                    aRoomInfo(
+                        hasRoomCall = true,
+                        activeRoomCallParticipants = listOf(A_SESSION_ID),
+                    ),
+                )
+            },
+        )
+        val client = FakeMatrixClient(sessionId = A_SESSION_ID).apply {
+            givenGetRoomResult(A_ROOM_ID, room)
+        }
+        val manager = createActiveCallManager(
+            matrixClientProvider = FakeMatrixClientProvider(getClient = { Result.success(client) }),
+        )
+        val callData = CallData(A_SESSION_ID, A_ROOM_ID, isAudioCall = true)
+
+        val idleDeferred = backgroundScope.async {
+            manager.waitForMatrixRtcRoomIdle(callData, maxWaitSeconds = 10)
+        }
+        runCurrent()
+        assertThat(idleDeferred.isCompleted).isFalse()
+
+        room.baseRoom.givenRoomInfo(
+            aRoomInfo(hasRoomCall = false, activeRoomCallParticipants = emptyList()),
+        )
+        advanceTimeBy(1_000)
+        runCurrent()
+
+        assertThat(idleDeferred.await()).isTrue()
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `awaitReadyForOutgoingCall - proceeds immediately after hang up without blocking on room idle`() = runTest {
         val room = FakeJoinedRoom(
             baseRoom = FakeBaseRoom().apply {
                 givenRoomInfo(
@@ -573,36 +609,22 @@ class DefaultActiveCallManagerTest : RobolectricTest() {
 
         manager.joinedCall(callData)
         manager.hangUpCall(callData)
-        assertThat(manager.shouldForceStartNewCall(A_ROOM_ID)).isTrue()
 
-        val gateDeferred = backgroundScope.async {
-            manager.awaitReadyForOutgoingCall(callData)
-        }
-        runCurrent()
-        assertThat(gateDeferred.isCompleted).isFalse()
+        val gate = manager.awaitReadyForOutgoingCall(callData)
 
-        room.baseRoom.givenRoomInfo(
-            aRoomInfo(
-                hasRoomCall = true,
-                activeRoomCallParticipants = emptyList(),
-            ),
-        )
-        advanceTimeBy(5_000)
-        runCurrent()
-
-        assertThat(gateDeferred.await()).isEqualTo(OutgoingCallGate.Proceed)
+        assertThat(gate).isEqualTo(OutgoingCallGate.Proceed)
         assertThat(manager.shouldForceStartNewCall(A_ROOM_ID)).isTrue()
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
     @Test
-    fun `awaitReadyForOutgoingCall - waits until room call is idle when not forcing start`() = runTest {
+    fun `waitForMatrixRtcRoomIdle - true when participants empty even if hasRoomCall`() = runTest {
         val room = FakeJoinedRoom(
             baseRoom = FakeBaseRoom().apply {
                 givenRoomInfo(
                     aRoomInfo(
                         hasRoomCall = true,
-                        activeRoomCallParticipants = listOf(A_SESSION_ID),
+                        activeRoomCallParticipants = emptyList(),
                     ),
                 )
             },
@@ -615,25 +637,7 @@ class DefaultActiveCallManagerTest : RobolectricTest() {
         )
         val callData = CallData(A_SESSION_ID, A_ROOM_ID, isAudioCall = true)
 
-        // Simulate a stale room call without a local hang-up (no force-START flag).
-        room.baseRoom.givenRoomInfo(
-            aRoomInfo(hasRoomCall = true, activeRoomCallParticipants = listOf(A_SESSION_ID)),
-        )
-
-        val gateDeferred = backgroundScope.async {
-            manager.awaitReadyForOutgoingCall(callData)
-        }
-        runCurrent()
-        assertThat(gateDeferred.isCompleted).isFalse()
-
-        room.baseRoom.givenRoomInfo(
-            aRoomInfo(hasRoomCall = false, activeRoomCallParticipants = emptyList()),
-        )
-        advanceTimeBy(5_000)
-        runCurrent()
-
-        assertThat(gateDeferred.await()).isEqualTo(OutgoingCallGate.Proceed)
-        assertThat(manager.shouldForceStartNewCall(A_ROOM_ID)).isFalse()
+        assertThat(manager.waitForMatrixRtcRoomIdle(callData, maxWaitSeconds = 5)).isTrue()
     }
 
     @Test

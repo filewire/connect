@@ -116,6 +116,12 @@ interface ActiveCallManager {
      * recall uses START_CALL, without clearing [activeCall] while the call UI is still open.
      */
     fun markLocalCallLeavePending(callData: CallData)
+
+    /**
+     * Poll until MatrixRTC reports no active call / no participants, or [maxWaitSeconds] elapses.
+     * @return true if the room became idle before the timeout.
+     */
+    suspend fun waitForMatrixRtcRoomIdle(callData: CallData, maxWaitSeconds: Int): Boolean
 }
 
 /**
@@ -335,8 +341,6 @@ class DefaultActiveCallManager(
             delay(remainingMs)
         }
 
-        waitForRoomCallIdle(callData)
-
         return evaluateOutgoingGate(callData) ?: OutgoingCallGate.Proceed
     }
 
@@ -354,51 +358,33 @@ class DefaultActiveCallManager(
         recordHangUp(callData)
     }
 
-    /**
-     * After a local hang-up, MatrixRTC membership / room call flag can linger (MSC4140 delayed leave,
-     * remote still ringing). Wait until our session is no longer listed as an active participant
-     * before opening another outgoing call in the same room.
-     */
-    private suspend fun waitForRoomCallIdle(callData: CallData) {
-        if (lastHangUpRoomId != callData.roomId) return
+    override suspend fun waitForMatrixRtcRoomIdle(callData: CallData, maxWaitSeconds: Int): Boolean {
+        val client = matrixClientProvider.getOrRestore(callData.sessionId).getOrNull() ?: return false
+        val room = client.getRoom(callData.roomId) ?: return false
 
-        val client = matrixClientProvider.getOrRestore(callData.sessionId).getOrNull() ?: return
-        val room = client.getRoom(callData.roomId) ?: return
+        Timber.tag(tag).d(
+            "Waiting up to %ds for MatrixRTC idle in %s",
+            maxWaitSeconds,
+            callData.roomId,
+        )
 
-        val forcingStart = forceStartNewCallRoomId == callData.roomId
-        if (forcingStart) {
-            Timber.tag(tag).d(
-                "Waiting for local session to leave MatrixRTC in %s before recall (force START_CALL)",
-                callData.roomId,
-            )
-        }
-
-        val becameIdle = withTimeoutOrNull(ElementCallConfig.CALL_LEAVE_SETTLE_MAX_SECONDS.seconds) {
-            while (true) {
-                val roomInfo = room.roomInfoFlow.first()
-                val sessionStillInCall = callData.sessionId in roomInfo.activeRoomCallParticipants
-                if (!sessionStillInCall) {
-                    if (!roomInfo.hasRoomCall || forcingStart) {
-                        break
-                    }
-                }
-                delay(500)
+        val becameIdle = withTimeoutOrNull(maxWaitSeconds.seconds) {
+            while (!room.roomInfoFlow.first().isMatrixRtcIdle()) {
+                delay(ElementCallConfig.CALL_ROOM_IDLE_POLL_INTERVAL_MS)
             }
-            Timber.tag(tag).d(
-                "Room call idle for session in %s (forceStart=%s), safe to start a new call",
-                callData.roomId,
-                forcingStart,
-            )
             true
         } == true
 
-        if (!becameIdle) {
+        if (becameIdle) {
+            Timber.tag(tag).d("MatrixRTC idle in %s", callData.roomId)
+        } else {
             Timber.tag(tag).w(
-                "Timed out after %ds waiting for session to leave call in %s; proceeding with START_CALL",
-                ElementCallConfig.CALL_LEAVE_SETTLE_MAX_SECONDS,
+                "Timed out after %ds waiting for MatrixRTC idle in %s",
+                maxWaitSeconds,
                 callData.roomId,
             )
         }
+        return becameIdle
     }
 
     private suspend fun evaluateOutgoingGate(callData: CallData): OutgoingCallGate? = mutex.withLock {

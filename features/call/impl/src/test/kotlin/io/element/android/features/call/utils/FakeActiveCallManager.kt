@@ -51,6 +51,8 @@ class FakeActiveCallManager(
 
     override fun markLocalCallLeavePending(callData: CallData) = Unit
 
+    override suspend fun waitForMatrixRtcRoomIdle(callData: CallData, maxWaitSeconds: Int): Boolean = true
+
     fun setActiveCall(value: ActiveCall?) {
         this.activeCall.value = value
     }

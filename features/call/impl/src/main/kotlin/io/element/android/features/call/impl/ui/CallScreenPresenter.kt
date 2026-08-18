@@ -121,14 +121,26 @@ class CallScreenPresenter(
             return false
         }
 
-        suspend fun waitForHangupGrace(reason: String) {
+        suspend fun waitForMatrixRtcLeaveAfterHangup(reason: String) {
             if (!hangupSentToWidget.get()) return
             Timber.tag(CALL_LOG_TAG).d(
-                "Waiting %ds for MatrixRTC leave (%s)",
-                ElementCallConfig.CALL_HANGUP_GRACE_SECONDS,
+                "Waiting min %ds then polling MatrixRTC leave (%s)",
+                ElementCallConfig.CALL_HANGUP_MIN_GRACE_SECONDS,
                 reason,
             )
-            delay(ElementCallConfig.CALL_HANGUP_GRACE_SECONDS.seconds)
+            delay(ElementCallConfig.CALL_HANGUP_MIN_GRACE_SECONDS.seconds)
+            activeCallManager.waitForMatrixRtcRoomIdle(
+                callData = callData,
+                maxWaitSeconds = ElementCallConfig.CALL_LEAVE_SETTLE_MAX_SECONDS,
+            )
+        }
+
+        suspend fun prepareWidgetIfRecallingAfterHangup() {
+            if (!activeCallManager.shouldForceStartNewCall(callData.roomId)) return
+            activeCallManager.waitForMatrixRtcRoomIdle(
+                callData = callData,
+                maxWaitSeconds = ElementCallConfig.CALL_RECALL_IDLE_WAIT_MAX_SECONDS,
+            )
         }
 
         suspend fun terminateCall(reason: String, sendHangupToWidget: Boolean) {
@@ -143,15 +155,15 @@ class CallScreenPresenter(
                 } else {
                     Timber.tag(CALL_LOG_TAG).d("Ending call without extra hangup message (%s)", reason)
                 }
-                waitForHangupGrace(reason)
+                waitForMatrixRtcLeaveAfterHangup(reason)
                 appCoroutineScope.close(driver, navigator)
             }
         }
 
         DisposableEffect(Unit) {
             coroutineScope.launch {
-                // Sets the call as joined
                 activeCallManager.joinedCall(callData)
+                prepareWidgetIfRecallingAfterHangup()
                 fetchRoomCallUrl(
                     callData = callData,
                     urlState = urlState,
@@ -225,7 +237,7 @@ class CallScreenPresenter(
                         ElementCallConfig.CALL_WIDGET_LOAD_TIMEOUT_SECONDS,
                     )
                     sendHangupToElementCall("load timeout")
-                    waitForHangupGrace("load timeout")
+                    waitForMatrixRtcLeaveAfterHangup("load timeout")
                     activeCallManager.markLocalCallLeavePending(callData)
                     callError = CallScreenError.LoadTimeout
                 }
@@ -251,7 +263,7 @@ class CallScreenPresenter(
                     Timber.d("Retrying call setup for roomId: ${callData.roomId}")
                     coroutineScope.launch {
                         sendHangupToElementCall("retry")
-                        waitForHangupGrace("retry")
+                        waitForMatrixRtcLeaveAfterHangup("retry")
                         activeCallManager.markLocalCallLeavePending(callData)
                         callError = null
                         ignoreWebViewError = false
@@ -264,6 +276,7 @@ class CallScreenPresenter(
                         urlState.value = AsyncData.Uninitialized
                         loadAttempt += 1
                         previousDriver?.close()
+                        prepareWidgetIfRecallingAfterHangup()
                         fetchRoomCallUrl(
                             callData = callData,
                             urlState = urlState,
@@ -285,7 +298,7 @@ class CallScreenPresenter(
                     if (isRenderProcessCrash || !ignoreWebViewError) {
                         coroutineScope.launch {
                             sendHangupToElementCall("webview error")
-                            waitForHangupGrace("webview error")
+                            waitForMatrixRtcLeaveAfterHangup("webview error")
                             activeCallManager.markLocalCallLeavePending(callData)
                             callError = CallScreenError.WebView(event.description)
                         }

@@ -23,21 +23,28 @@ object ElementCallConfig {
 
     /**
      * After hanging up, wait this long before starting another call UI for the same room.
-     * Rapid hang-up → recall otherwise races WebView teardown and can crash the renderer
-     * (and the whole app if [android.webkit.WebViewClient.onRenderProcessGone] is not handled).
+     * Rapid hang-up → recall otherwise races WebView teardown and can crash the renderer.
      */
-    const val CALL_REJOIN_COOLDOWN_SECONDS = 5
+    const val CALL_REJOIN_COOLDOWN_SECONDS = 2
 
     /**
-     * Keep the WebView alive after hang-up so Element Call can finish MatrixRTC leave
-     * (MSC4140 delayed leave). Applies to user hang-up, EC Close, load timeout, and dispose paths.
+     * Minimum time to keep the call WebView alive after sending hangup so Element Call can
+     * process `im.vector.hangup` before we poll for MatrixRTC leave.
      */
-    const val CALL_HANGUP_GRACE_SECONDS = 8
+    const val CALL_HANGUP_MIN_GRACE_SECONDS = 2
 
     /**
-     * Max time to wait for the room call to go idle (`hasRoomCall == false`)
-     * before opening a new outgoing call in the same room.
-     * Covers MSC4140 delayed leave and remote clients that keep ringing briefly.
+     * Max time to poll for MatrixRTC leave after hang-up (MSC4140 delayed leave).
+     * WebView stays alive during this window so leave can complete on the server.
      */
-    const val CALL_LEAVE_SETTLE_MAX_SECONDS = 35
+    const val CALL_LEAVE_SETTLE_MAX_SECONDS = 25
+
+    /**
+     * When recalling after hang-up, max time to wait for room idle inside the call UI
+     * (user already sees Please wait) before loading the widget with START_CALL.
+     */
+    const val CALL_RECALL_IDLE_WAIT_MAX_SECONDS = 8
+
+    /** Poll interval while waiting for the room call to go idle. */
+    const val CALL_ROOM_IDLE_POLL_INTERVAL_MS = 250L
 }
