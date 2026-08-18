@@ -93,7 +93,7 @@ internal fun CallScreenView(
             )
         }
     }
-    if (state.callError == null) {
+    if (state.callError == null || state.urlState is AsyncData.Success || state.urlState is AsyncData.Loading) {
         var webViewAudioManager by remember { mutableStateOf<WebViewAudioManager?>(null) }
         val coroutineScope = rememberCoroutineScope()
 
@@ -148,19 +148,21 @@ internal fun CallScreenView(
                 }
             )
         }
-        when (state.urlState) {
-            AsyncData.Uninitialized,
-            is AsyncData.Loading ->
-                ProgressDialog(text = stringResource(id = CommonStrings.common_please_wait))
-            is AsyncData.Success -> {
-                if (!state.isCallActive) {
-                    // WebView is up but Element Call has not signalled content_loaded yet — avoid a blank screen.
+        if (state.callError == null) {
+            when (state.urlState) {
+                AsyncData.Uninitialized,
+                is AsyncData.Loading ->
                     ProgressDialog(text = stringResource(id = CommonStrings.common_please_wait))
+                is AsyncData.Success -> {
+                    if (!state.isCallActive) {
+                        // WebView is up but Element Call has not signalled content_loaded yet — avoid a blank screen.
+                        ProgressDialog(text = stringResource(id = CommonStrings.common_please_wait))
+                    }
                 }
-            }
-            is AsyncData.Failure -> {
-                // Handled via callError / CallErrorDialog from the presenter
-                Timber.e(state.urlState.error, "WebView failed to load URL: ${state.urlState.error.message}")
+                is AsyncData.Failure -> {
+                    // Handled via callError / CallErrorDialog from the presenter
+                    Timber.e(state.urlState.error, "WebView failed to load URL: ${state.urlState.error.message}")
+                }
             }
         }
     }

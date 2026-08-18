@@ -97,39 +97,53 @@ class CallScreenPresenter(
         val terminateCallMutex = remember { Mutex() }
         val isTerminatingCall = remember { AtomicBoolean(false) }
 
+        suspend fun sendHangupToElementCall(reason: String): Boolean {
+            val widgetId = callWidgetDriver.value?.id
+            val interceptor = messageInterceptor.value
+            if (widgetId != null && interceptor != null && !hangupSentToWidget.getAndSet(true)) {
+                Timber.tag(CALL_LOG_TAG).d(
+                    "Sending hangup to Element Call (%s) roomId=%s",
+                    reason,
+                    callData.roomId,
+                )
+                sendHangupMessage(widgetId, interceptor)
+                isWidgetLoaded = false
+                return true
+            }
+            if (hangupSentToWidget.get()) {
+                Timber.tag(CALL_LOG_TAG).d("Hangup already sent to Element Call (%s)", reason)
+            } else {
+                Timber.tag(CALL_LOG_TAG).w(
+                    "Could not send hangup to Element Call (%s); widgetId/interceptor unavailable",
+                    reason,
+                )
+            }
+            return false
+        }
+
+        suspend fun waitForHangupGrace(reason: String) {
+            if (!hangupSentToWidget.get()) return
+            Timber.tag(CALL_LOG_TAG).d(
+                "Waiting %ds for MatrixRTC leave (%s)",
+                ElementCallConfig.CALL_HANGUP_GRACE_SECONDS,
+                reason,
+            )
+            delay(ElementCallConfig.CALL_HANGUP_GRACE_SECONDS.seconds)
+        }
+
         suspend fun terminateCall(reason: String, sendHangupToWidget: Boolean) {
             terminateCallMutex.withLock {
                 if (isTerminatingCall.getAndSet(true)) {
                     Timber.tag(CALL_LOG_TAG).d("Call termination already in progress, ignoring (%s)", reason)
                     return
                 }
-                val widgetId = callWidgetDriver.value?.id
-                val interceptor = messageInterceptor.value
                 val driver = callWidgetDriver.value
-                if (sendHangupToWidget && widgetId != null && interceptor != null && !hangupSentToWidget.getAndSet(true)) {
-                    Timber.tag(CALL_LOG_TAG).d(
-                        "Sending hangup to Element Call before closing (%s) roomId=%s",
-                        reason,
-                        callData.roomId,
-                    )
-                    sendHangupMessage(widgetId, interceptor)
-                    isWidgetLoaded = false
-                } else if (sendHangupToWidget) {
-                    Timber.tag(CALL_LOG_TAG).w(
-                        "Could not send hangup to Element Call (%s); widgetId/interceptor unavailable",
-                        reason,
-                    )
+                if (sendHangupToWidget) {
+                    sendHangupToElementCall(reason)
                 } else {
                     Timber.tag(CALL_LOG_TAG).d("Ending call without extra hangup message (%s)", reason)
                 }
-                if (callError == null) {
-                    Timber.tag(CALL_LOG_TAG).d(
-                        "Waiting %ds for MatrixRTC leave before destroying WebView (%s)",
-                        ElementCallConfig.CALL_HANGUP_GRACE_SECONDS,
-                        reason,
-                    )
-                    delay(ElementCallConfig.CALL_HANGUP_GRACE_SECONDS.seconds)
-                }
+                waitForHangupGrace(reason)
                 appCoroutineScope.close(driver, navigator)
             }
         }
@@ -207,9 +221,12 @@ class CallScreenPresenter(
 
                 if (!isWidgetLoaded) {
                     Timber.w(
-                        "The call took more than %ds to load. Showing recoverable timeout error.",
+                        "The call took more than %ds to load. Sending leave before showing timeout error.",
                         ElementCallConfig.CALL_WIDGET_LOAD_TIMEOUT_SECONDS,
                     )
+                    sendHangupToElementCall("load timeout")
+                    waitForHangupGrace("load timeout")
+                    activeCallManager.markLocalCallLeavePending(callData)
                     callError = CallScreenError.LoadTimeout
                 }
             }
@@ -232,19 +249,20 @@ class CallScreenPresenter(
                 }
                 is CallScreenEvent.Retry -> {
                     Timber.d("Retrying call setup for roomId: ${callData.roomId}")
-                    callError = null
-                    ignoreWebViewError = false
-                    isWidgetLoaded = false
-                    isTerminatingCall.set(false)
-                    hangupSentToWidget.set(false)
-                    // Drop the previous interceptor/driver so load-timeout effects and
-                    // driver.run() cannot race against the new attempt.
-                    val previousDriver = callWidgetDriver.value
-                    messageInterceptor.value = null
-                    callWidgetDriver.value = null
-                    urlState.value = AsyncData.Uninitialized
-                    loadAttempt += 1
                     coroutineScope.launch {
+                        sendHangupToElementCall("retry")
+                        waitForHangupGrace("retry")
+                        activeCallManager.markLocalCallLeavePending(callData)
+                        callError = null
+                        ignoreWebViewError = false
+                        isWidgetLoaded = false
+                        isTerminatingCall.set(false)
+                        hangupSentToWidget.set(false)
+                        val previousDriver = callWidgetDriver.value
+                        messageInterceptor.value = null
+                        callWidgetDriver.value = null
+                        urlState.value = AsyncData.Uninitialized
+                        loadAttempt += 1
                         previousDriver?.close()
                         fetchRoomCallUrl(
                             callData = callData,
@@ -265,7 +283,12 @@ class CallScreenPresenter(
                     val isRenderProcessCrash =
                         event.description == WebViewWidgetMessageInterceptor.RENDER_PROCESS_CRASH_DETAILS
                     if (isRenderProcessCrash || !ignoreWebViewError) {
-                        callError = CallScreenError.WebView(event.description)
+                        coroutineScope.launch {
+                            sendHangupToElementCall("webview error")
+                            waitForHangupGrace("webview error")
+                            activeCallManager.markLocalCallLeavePending(callData)
+                            callError = CallScreenError.WebView(event.description)
+                        }
                     }
                     // Else ignore the error, give a chance the Element Call to recover by itself.
                 }

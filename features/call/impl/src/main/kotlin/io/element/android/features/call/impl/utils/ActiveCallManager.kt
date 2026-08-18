@@ -110,6 +110,12 @@ interface ActiveCallManager {
      * Clear the force-START flag once the new call widget URL has been built.
      */
     fun clearForceStartNewCall(roomId: RoomId)
+
+    /**
+     * After a failed call attempt (load timeout, WebView error) record hang-up metadata so
+     * recall uses START_CALL, without clearing [activeCall] while the call UI is still open.
+     */
+    fun markLocalCallLeavePending(callData: CallData)
 }
 
 /**
@@ -342,6 +348,10 @@ class DefaultActiveCallManager(
         if (forceStartNewCallRoomId == roomId) {
             forceStartNewCallRoomId = null
         }
+    }
+
+    override fun markLocalCallLeavePending(callData: CallData) {
+        recordHangUp(callData)
     }
 
     /**

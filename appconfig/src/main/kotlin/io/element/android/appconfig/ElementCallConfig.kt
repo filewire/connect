@@ -29,12 +29,8 @@ object ElementCallConfig {
     const val CALL_REJOIN_COOLDOWN_SECONDS = 5
 
     /**
-     * After the user hangs up, keep the call WebView alive briefly so Element Call can send
-     * MatrixRTC leave / end-ring events before the Activity is destroyed.
-     */
-  /**
      * Keep the WebView alive after hang-up so Element Call can finish MatrixRTC leave
-     * (MSC4140 delayed leave). Applies to user hang-up, EC Close, and dispose paths.
+     * (MSC4140 delayed leave). Applies to user hang-up, EC Close, load timeout, and dispose paths.
      */
     const val CALL_HANGUP_GRACE_SECONDS = 8
 

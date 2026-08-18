@@ -49,6 +49,8 @@ class FakeActiveCallManager(
         clearForceStartNewCallResult(roomId)
     }
 
+    override fun markLocalCallLeavePending(callData: CallData) = Unit
+
     fun setActiveCall(value: ActiveCall?) {
         this.activeCall.value = value
     }
