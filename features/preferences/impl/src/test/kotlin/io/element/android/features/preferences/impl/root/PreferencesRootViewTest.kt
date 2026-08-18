@@ -346,7 +346,7 @@ class PreferencesRootViewTest : RobolectricTest() {
     }
 
     @Test
-    fun `click on About invokes the expected callback`() = runAndroidComposeUiTest {
+    fun `click on Sign out invokes the expected callback`() = runAndroidComposeUiTest {
         val eventsRecorder = EventsRecorder<PreferencesRootEvent>(expectEvents = false)
         ensureCalledOnce { callback ->
             setView(
