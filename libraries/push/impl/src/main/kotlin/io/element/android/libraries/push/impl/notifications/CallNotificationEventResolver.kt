@@ -11,7 +11,6 @@ package io.element.android.libraries.push.impl.notifications
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.ContributesBinding
 import io.element.android.libraries.core.extensions.runCatchingExceptions
-import io.element.android.libraries.matrix.api.MatrixClientProvider
 import io.element.android.libraries.matrix.api.core.SessionId
 import io.element.android.libraries.matrix.api.exception.NotificationResolverException
 import io.element.android.libraries.matrix.api.notification.CallIntent
@@ -48,8 +47,6 @@ interface CallNotificationEventResolver {
 class DefaultCallNotificationEventResolver(
     private val stringProvider: StringProvider,
     private val appForegroundStateService: AppForegroundStateService,
-    @Suppress("unused")
-    private val clientProvider: MatrixClientProvider,
 ) : CallNotificationEventResolver {
     override suspend fun resolveEvent(
         sessionId: SessionId,
@@ -60,7 +57,7 @@ class DefaultCallNotificationEventResolver(
             ?: throw NotificationResolverException.UnknownError("content is not a call notify")
 
         // RING should ring immediately. Waiting for hasRoomCall delayed incoming calls by seconds
-        // even when chat messages already arrive in 1–4s.
+        // even when chat messages already arrive in 1-4s.
         val shouldRing = content.type == RtcNotificationType.RING && !forceNotify
 
         if (shouldRing) {
@@ -80,14 +77,7 @@ class DefaultCallNotificationEventResolver(
                     timestamp = this.timestamp,
                     isRedacted = false,
                     isUpdated = false,
-                    description = if (content.callIntent ==
-                        CallIntent.AUDIO) {
-                            stringProvider.getString(R.string.notification_incoming_audio_call)
-                        } else {
-                            stringProvider.getString(
-                        R.string.notification_incoming_call
-                    )
-                        },
+                    description = incomingCallDescription(content.callIntent),
                     senderDisambiguatedDisplayName = getDisambiguatedDisplayName(content.senderId),
                     roomAvatarUrl = roomAvatarUrl,
                     rtcNotificationType = content.type,
@@ -98,7 +88,6 @@ class DefaultCallNotificationEventResolver(
                 )
             } else {
                 Timber.d("Event $eventId is call notify but should not ring, notify: ${content.type}")
-                // Create a simple message notification event
                 buildNotifiableMessageEvent(
                     sessionId = sessionId,
                     senderId = content.senderId,
@@ -107,11 +96,7 @@ class DefaultCallNotificationEventResolver(
                     noisy = true,
                     timestamp = this.timestamp,
                     senderDisambiguatedDisplayName = getDisambiguatedDisplayName(content.senderId),
-                    body = if (content.callIntent == CallIntent.VIDEO) {
-                        stringProvider.getString(R.string.notification_incoming_call)
-                    } else {
-                        stringProvider.getString(R.string.notification_incoming_audio_call)
-                    },
+                    body = incomingCallDescription(content.callIntent),
                     roomName = roomDisplayName,
                     roomIsDm = isDm,
                     roomAvatarPath = roomAvatarUrl,
@@ -119,6 +104,14 @@ class DefaultCallNotificationEventResolver(
                     type = EventType.RTC_NOTIFICATION,
                 )
             }
+        }
+    }
+
+    private fun incomingCallDescription(callIntent: CallIntent): String {
+        return if (callIntent == CallIntent.AUDIO) {
+            stringProvider.getString(R.string.notification_incoming_audio_call)
+        } else {
+            stringProvider.getString(R.string.notification_incoming_call)
         }
     }
 }

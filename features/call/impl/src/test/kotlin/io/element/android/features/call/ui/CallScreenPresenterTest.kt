@@ -83,6 +83,7 @@ class CallScreenPresenterTest {
             assertThat(initialState.urlState).isInstanceOf(AsyncData.Loading::class.java)
             assertThat(initialState.isCallActive).isFalse()
             assertThat(widgetProvider.getWidgetCalled).isTrue()
+            assertThat(widgetProvider.forceStartNewCallArgs).containsExactly(true)
             assertThat(widgetDriver.runCalledCount).isEqualTo(1)
             analyticsLambda.assertions().isCalledOnce().with(value(MobileScreen.ScreenName.RoomCall))
 

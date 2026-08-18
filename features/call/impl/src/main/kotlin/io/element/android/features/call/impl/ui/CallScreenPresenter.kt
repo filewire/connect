@@ -150,12 +150,15 @@ class CallScreenPresenter(
         DisposableEffect(Unit) {
             coroutineScope.launch {
                 activeCallManager.joinedCall(callData)
+                // Always START. JOIN_EXISTING against leftover MatrixRTC (hasRoomCall still true after hang-up)
+                // never reaches content_loaded.
                 fetchRoomCallUrl(
                     callData = callData,
                     urlState = urlState,
                     callWidgetDriver = callWidgetDriver,
                     languageTag = languageTag,
                     theme = theme,
+                    forceStartNewCall = true,
                     onSetupFailure = { details ->
                         callError = CallScreenError.Setup(details)
                     },
@@ -223,7 +226,6 @@ class CallScreenPresenter(
                         ElementCallConfig.CALL_WIDGET_LOAD_TIMEOUT_SECONDS,
                     )
                     sendHangupToElementCall("load timeout")
-                    waitForHangupGrace("load timeout")
                     activeCallManager.markLocalCallLeavePending(callData)
                     callError = CallScreenError.LoadTimeout
                 }
@@ -249,7 +251,6 @@ class CallScreenPresenter(
                     Timber.d("Retrying call setup for roomId: ${callData.roomId}")
                     coroutineScope.launch {
                         sendHangupToElementCall("retry")
-                        waitForHangupGrace("retry")
                         activeCallManager.markLocalCallLeavePending(callData)
                         callError = null
                         ignoreWebViewError = false
@@ -268,6 +269,7 @@ class CallScreenPresenter(
                             callWidgetDriver = callWidgetDriver,
                             languageTag = languageTag,
                             theme = theme,
+                            forceStartNewCall = true,
                             onSetupFailure = { details ->
                                 callError = CallScreenError.Setup(details)
                             },
@@ -283,7 +285,6 @@ class CallScreenPresenter(
                     if (isRenderProcessCrash || !ignoreWebViewError) {
                         coroutineScope.launch {
                             sendHangupToElementCall("webview error")
-                            waitForHangupGrace("webview error")
                             activeCallManager.markLocalCallLeavePending(callData)
                             callError = CallScreenError.WebView(event.description)
                         }
@@ -309,10 +310,10 @@ class CallScreenPresenter(
         callWidgetDriver: MutableState<MatrixWidgetDriver?>,
         languageTag: String?,
         theme: String?,
+        forceStartNewCall: Boolean,
         onSetupFailure: (String?) -> Unit,
     ) {
         urlState.runCatchingUpdatingState {
-            val forceStartNewCall = activeCallManager.shouldForceStartNewCall(callData.roomId)
             Timber.tag(CALL_LOG_TAG).d(
                 "Preparing call widget for roomId=%s intent=%s",
                 callData.roomId,
