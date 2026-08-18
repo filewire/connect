@@ -117,6 +117,7 @@ class IncomingCallActivity : AppCompatActivity() {
     }
 
     private fun onAnswer(notificationData: CallNotificationData) {
+        activeCallManager.markAnsweringIncoming(notificationData.roomId)
         elementCallEntryPoint.startCall(
             CallData(
                 sessionId = notificationData.sessionId,

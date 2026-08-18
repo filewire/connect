@@ -27,7 +27,6 @@ import io.element.android.appconfig.ElementCallConfig
 import io.element.android.features.call.api.CallData
 import io.element.android.features.call.impl.data.WidgetMessage
 import io.element.android.features.call.impl.utils.ActiveCallManager
-import io.element.android.features.call.impl.utils.CallState
 import io.element.android.features.call.impl.utils.CallWidgetProvider
 import io.element.android.features.call.impl.utils.WebViewWidgetMessageInterceptor
 import io.element.android.features.call.impl.utils.WidgetMessageInterceptor
@@ -155,13 +154,9 @@ class CallScreenPresenter(
 
         DisposableEffect(Unit) {
             coroutineScope.launch {
-                val answeringIncoming = activeCallManager.activeCall.value.let { active ->
-                    active != null &&
-                        active.callData.roomId == callData.roomId &&
-                        active.callState is CallState.Ringing
-                }
-                // Incoming answer must JOIN the live remote call. Outgoing / recall uses START so we
-                // do not JOIN_EXISTING against leftover hasRoomCall (Please wait until timeout).
+                // Only IncomingCallActivity sets this. Timeline Join / outgoing / leftover Ringing
+                // always START so JOIN_EXISTING does not hang on a zombie MatrixRTC session.
+                val answeringIncoming = activeCallManager.consumeAnsweringIncoming(callData.roomId)
                 if (!answeringIncoming) {
                     activeCallManager.joinedCall(callData)
                 }

@@ -103,6 +103,7 @@ class CallScreenPresenterTest {
         val widgetProvider = FakeCallWidgetProvider(widgetDriver)
         val callData = CallData(A_SESSION_ID, A_ROOM_ID, false)
         val activeCallManager = FakeActiveCallManager()
+        activeCallManager.markAnsweringIncoming(A_ROOM_ID)
         activeCallManager.setActiveCall(
             ActiveCall(
                 callData = callData,
@@ -119,6 +120,32 @@ class CallScreenPresenterTest {
         presenter.test {
             advanceTimeBy(1.seconds)
             assertThat(widgetProvider.forceStartNewCallArgs).containsExactly(false)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `present - leftover ringing without incoming answer uses START_CALL`() = runTest {
+        val widgetDriver = FakeMatrixWidgetDriver()
+        val widgetProvider = FakeCallWidgetProvider(widgetDriver)
+        val callData = CallData(A_SESSION_ID, A_ROOM_ID, false)
+        val activeCallManager = FakeActiveCallManager()
+        activeCallManager.setActiveCall(
+            ActiveCall(
+                callData = callData,
+                callState = CallState.Ringing(aCallNotificationData()),
+            )
+        )
+        val presenter = createCallScreenPresenter(
+            callData = callData,
+            widgetDriver = widgetDriver,
+            widgetProvider = widgetProvider,
+            screenTracker = FakeScreenTracker {},
+            activeCallManager = activeCallManager,
+        )
+        presenter.test {
+            advanceTimeBy(1.seconds)
+            assertThat(widgetProvider.forceStartNewCallArgs).containsExactly(true)
             cancelAndIgnoreRemainingEvents()
         }
     }

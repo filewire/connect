@@ -479,7 +479,7 @@ class DefaultActiveCallManagerTest : RobolectricTest() {
 
     @OptIn(ExperimentalCoroutinesApi::class)
     @Test
-    fun `IncomingCall - ignore expired ring lifetime`() = runTest {
+    fun `IncomingCall - rings even after MSC4075 lifetime expired`() = runTest {
         setupShadowPowerManager()
         val notificationManagerCompat = mockk<NotificationManagerCompat>(relaxed = true)
         val clock = FakeSystemClock()
@@ -489,7 +489,6 @@ class DefaultActiveCallManagerTest : RobolectricTest() {
         assertThat(manager.activeCall.value).isNull()
 
         val eventTimestamp = A_FAKE_TIMESTAMP
-        // The call should not ring more than 30 seconds after the initial event was sent
         val expirationTimestamp = eventTimestamp + 30_000
 
         val callNotificationData = aCallNotificationData(
@@ -497,16 +496,43 @@ class DefaultActiveCallManagerTest : RobolectricTest() {
             expirationTimestamp = expirationTimestamp,
         )
 
-        // suppose it took 35s to be notified
+        // Push arrived after MSC4075 lifetime; still ring so locked phones are not silent.
         clock.epochMillisResult = eventTimestamp + 35_000
         manager.registerIncomingCall(callNotificationData)
 
-        assertThat(manager.activeCall.value).isNull()
+        assertThat(manager.activeCall.value).isEqualTo(
+            ActiveCall(
+                callData = CallData(
+                    sessionId = callNotificationData.sessionId,
+                    roomId = callNotificationData.roomId,
+                    isAudioCall = false,
+                ),
+                callState = CallState.Ringing(callNotificationData)
+            )
+        )
 
         runCurrent()
 
-        assertThat(manager.activeWakeLock?.isHeld).isFalse()
-        verify(exactly = 0) { notificationManagerCompat.notify(notificationId, any()) }
+        assertThat(manager.activeWakeLock?.isHeld).isTrue()
+        verify { notificationManagerCompat.notify(notificationId, any()) }
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `registerIncomingCall - leftover InCall with force START is replaced by RING`() = runTest {
+        setupShadowPowerManager()
+        val notificationManagerCompat = mockk<NotificationManagerCompat>(relaxed = true)
+        val manager = createActiveCallManager(notificationManagerCompat = notificationManagerCompat)
+        val callData = CallData(A_SESSION_ID, A_ROOM_ID, isAudioCall = false)
+        manager.joinedCall(callData)
+        manager.markLocalCallLeavePending(callData)
+
+        val incoming = aCallNotificationData()
+        manager.registerIncomingCall(incoming)
+
+        assertThat(manager.activeCall.value?.callState).isInstanceOf(CallState.Ringing::class.java)
+        runCurrent()
+        verify { notificationManagerCompat.notify(notificationId, any()) }
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -527,6 +553,23 @@ class DefaultActiveCallManagerTest : RobolectricTest() {
         assertThat(manager.activeCall.value).isEqualTo(activeCall)
         advanceTimeBy(1)
         addMissedCallNotificationLambda.assertions().isNeverCalled()
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `registerIncomingCall - live InCall without force START ignores RING`() = runTest {
+        setupShadowPowerManager()
+        val notificationManagerCompat = mockk<NotificationManagerCompat>(relaxed = true)
+        val manager = createActiveCallManager(notificationManagerCompat = notificationManagerCompat)
+        val callData = CallData(A_SESSION_ID, A_ROOM_ID, isAudioCall = false)
+        manager.joinedCall(callData)
+        manager.clearForceStartNewCall(callData.roomId)
+
+        manager.registerIncomingCall(aCallNotificationData())
+
+        assertThat(manager.activeCall.value?.callState).isEqualTo(CallState.InCall)
+        runCurrent()
+        verify(exactly = 0) { notificationManagerCompat.notify(notificationId, any()) }
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)

@@ -26,6 +26,7 @@ class FakeActiveCallManager(
     var clearForceStartNewCallResult: (RoomId) -> Unit = {},
 ) : ActiveCallManager {
     override val activeCall = MutableStateFlow<ActiveCall?>(null)
+    private var answeringIncomingRoomId: RoomId? = null
 
     override suspend fun registerIncomingCall(notificationData: CallNotificationData) = simulateLongTask {
         registerIncomingCallResult(notificationData)
@@ -50,6 +51,18 @@ class FakeActiveCallManager(
     }
 
     override fun markLocalCallLeavePending(callData: CallData) = Unit
+
+    override fun markAnsweringIncoming(roomId: RoomId) {
+        answeringIncomingRoomId = roomId
+    }
+
+    override fun consumeAnsweringIncoming(roomId: RoomId): Boolean {
+        val isAnswering = answeringIncomingRoomId == roomId
+        if (isAnswering) {
+            answeringIncomingRoomId = null
+        }
+        return isAnswering
+    }
 
     override suspend fun waitForMatrixRtcRoomIdle(callData: CallData, maxWaitSeconds: Int): Boolean = true
 

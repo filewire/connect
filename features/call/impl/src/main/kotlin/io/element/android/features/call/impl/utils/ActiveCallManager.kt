@@ -118,6 +118,16 @@ interface ActiveCallManager {
     fun markLocalCallLeavePending(callData: CallData)
 
     /**
+     * Mark that the next call UI for [roomId] is answering an incoming ring (JOIN, not START).
+     */
+    fun markAnsweringIncoming(roomId: RoomId)
+
+    /**
+     * Consume a pending incoming-answer for [roomId]. Returns true once, then false.
+     */
+    fun consumeAnsweringIncoming(roomId: RoomId): Boolean
+
+    /**
      * Poll until MatrixRTC reports no active call / no participants, or [maxWaitSeconds] elapses.
      * @return true if the room became idle before the timeout.
      */
@@ -165,6 +175,7 @@ class DefaultActiveCallManager(
      * (avoids JOIN_EXISTING against a sticky / zombie MatrixRTC session).
      */
     private var forceStartNewCallRoomId: RoomId? = null
+    private var answeringIncomingRoomId: RoomId? = null
 
     @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
     internal val activeWakeLock: PowerManager.WakeLock? = context.getSystemService<PowerManager>()
@@ -182,16 +193,18 @@ class DefaultActiveCallManager(
 
     override suspend fun registerIncomingCall(notificationData: CallNotificationData) {
         mutex.withLock {
-            val ringDuration =
-                min(
-                    notificationData.expirationTimestamp - systemClock.epochMillis(),
-                    ElementCallConfig.RINGING_CALL_DURATION_SECONDS * 1000L
+            val remainingMs = notificationData.expirationTimestamp - systemClock.epochMillis()
+            val ringDuration = if (remainingMs < 0) {
+                // Push can arrive after MSC4075 lifetime; the remote call is often still live
+                // (Join in the room). Dropping the ring left locked phones silent.
+                Timber.tag(tag).w(
+                    "Incoming RING past expiration by %dms; ringing anyway for %ds",
+                    -remainingMs,
+                    ElementCallConfig.RINGING_CALL_DURATION_SECONDS,
                 )
-
-            if (ringDuration < 0) {
-                // Should already have stopped ringing, ignore.
-                Timber.tag(tag).d("Received timed-out incoming ringing call for room id: ${notificationData.roomId}, cancel ringing")
-                return
+                ElementCallConfig.RINGING_CALL_DURATION_SECONDS * 1000L
+            } else {
+                min(remainingMs, ElementCallConfig.RINGING_CALL_DURATION_SECONDS * 1000L)
             }
 
             appForegroundStateService.updateHasRingingCall(true)
@@ -199,16 +212,25 @@ class DefaultActiveCallManager(
             val currentActiveCall = activeCall.value
             if (currentActiveCall != null) {
                 if (currentActiveCall.callData.roomId == notificationData.roomId) {
-                    // Already ringing or joined this room — do not treat as a missed call.
-                    Timber.tag(tag).d(
-                        "Incoming call for room already active locally (%s), ignoring",
-                        currentActiveCall.callState,
-                    )
+                    if (currentActiveCall.callState is CallState.Ringing) {
+                        Timber.tag(tag).d("Already ringing for this room, ignoring duplicate RING")
+                        return
+                    }
+                    if (currentActiveCall.callState is CallState.InCall &&
+                        !shouldForceStartNewCall(notificationData.roomId)
+                    ) {
+                        Timber.tag(tag).d("Already in this call, ignoring incoming RING")
+                        return
+                    }
+                    Timber.tag(tag).d("Replacing leftover local call state with incoming RING")
+                    timedOutCallJob?.cancel()
+                    cancelIncomingCallNotification()
+                    activeCall.value = null
+                } else {
+                    displayMissedCallNotification(notificationData)
+                    Timber.tag(tag).w("Already have an active call, ignoring incoming call: $notificationData")
                     return
                 }
-                displayMissedCallNotification(notificationData)
-                Timber.tag(tag).w("Already have an active call, ignoring incoming call: $notificationData")
-                return
             }
             activeCall.value = ActiveCall(
                 callData = CallData(
@@ -310,6 +332,7 @@ class DefaultActiveCallManager(
         }
         timedOutCallJob?.cancel()
         recordHangUp(callData)
+        answeringIncomingRoomId = null
         activeCall.value = null
     }
 
@@ -356,6 +379,18 @@ class DefaultActiveCallManager(
 
     override fun markLocalCallLeavePending(callData: CallData) {
         recordHangUp(callData)
+    }
+
+    override fun markAnsweringIncoming(roomId: RoomId) {
+        answeringIncomingRoomId = roomId
+    }
+
+    override fun consumeAnsweringIncoming(roomId: RoomId): Boolean {
+        val isAnswering = answeringIncomingRoomId == roomId
+        if (isAnswering) {
+            answeringIncomingRoomId = null
+        }
+        return isAnswering
     }
 
     override suspend fun waitForMatrixRtcRoomIdle(callData: CallData, maxWaitSeconds: Int): Boolean {
