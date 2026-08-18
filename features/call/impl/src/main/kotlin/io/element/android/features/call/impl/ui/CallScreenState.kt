@@ -8,11 +8,13 @@
 
 package io.element.android.features.call.impl.ui
 
+import androidx.compose.runtime.Immutable
 import io.element.android.libraries.architecture.AsyncData
 
 /**
  * Typed call-screen errors so the UI can show a clear title/message and Retry when useful.
  */
+@Immutable
 sealed interface CallScreenError {
     /** Element Call WebView did not become ready within the load timeout. */
     data object LoadTimeout : CallScreenError
@@ -32,7 +34,7 @@ data class CallScreenState(
     /**
      * Bumped on Retry so Compose recreates the WebView (required after a render-process crash).
      */
-    val webViewInstanceKey: Int = 0,
+    val webViewInstanceKey: Int,
     val eventSink: (CallScreenEvent) -> Unit,
 ) {
     /** All current call errors offer Retry; the user can also hang up. */

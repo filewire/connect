@@ -27,6 +27,7 @@ import io.element.android.appconfig.ElementCallConfig
 import io.element.android.features.call.api.CallData
 import io.element.android.features.call.impl.data.WidgetMessage
 import io.element.android.features.call.impl.utils.ActiveCallManager
+import io.element.android.features.call.impl.utils.CallState
 import io.element.android.features.call.impl.utils.CallWidgetProvider
 import io.element.android.features.call.impl.utils.WebViewWidgetMessageInterceptor
 import io.element.android.features.call.impl.utils.WidgetMessageInterceptor
@@ -142,23 +143,35 @@ class CallScreenPresenter(
                 } else {
                     Timber.tag(CALL_LOG_TAG).d("Ending call without extra hangup message (%s)", reason)
                 }
-                waitForHangupGrace(reason)
-                appCoroutineScope.close(driver, navigator)
+                // Close the call UI immediately. Keep the widget driver alive briefly in the
+                // background so Element Call can send MatrixRTC leave without blocking hang-up.
+                appCoroutineScope.close(navigator)
+                appCoroutineScope.launch(dispatchers.io) {
+                    waitForHangupGrace(reason)
+                    driver?.close()
+                }
             }
         }
 
         DisposableEffect(Unit) {
             coroutineScope.launch {
-                activeCallManager.joinedCall(callData)
-                // Always START. JOIN_EXISTING against leftover MatrixRTC (hasRoomCall still true after hang-up)
-                // never reaches content_loaded.
+                val answeringIncoming = activeCallManager.activeCall.value.let { active ->
+                    active != null &&
+                        active.callData.roomId == callData.roomId &&
+                        active.callState is CallState.Ringing
+                }
+                // Incoming answer must JOIN the live remote call. Outgoing / recall uses START so we
+                // do not JOIN_EXISTING against leftover hasRoomCall (Please wait until timeout).
+                if (!answeringIncoming) {
+                    activeCallManager.joinedCall(callData)
+                }
                 fetchRoomCallUrl(
                     callData = callData,
                     urlState = urlState,
                     callWidgetDriver = callWidgetDriver,
                     languageTag = languageTag,
                     theme = theme,
-                    forceStartNewCall = true,
+                    forceStartNewCall = !answeringIncoming,
                     onSetupFailure = { details ->
                         callError = CallScreenError.Setup(details)
                     },
@@ -209,6 +222,7 @@ class CallScreenPresenter(
                                 terminateCall(reason = "widget close", sendHangupToWidget = true)
                             } else if (parsedMessage.action == WidgetMessage.Action.ContentLoaded) {
                                 isWidgetLoaded = true
+                                activeCallManager.joinedCall(callData)
                                 activeCallManager.clearForceStartNewCall(callData.roomId)
                             }
                         }
@@ -376,8 +390,7 @@ class CallScreenPresenter(
         messageInterceptor.sendMessage(widgetMessageSerializer.serialize(message))
     }
 
-    private fun CoroutineScope.close(widgetDriver: MatrixWidgetDriver?, navigator: CallScreenNavigator) = launch(dispatchers.io) {
+    private fun CoroutineScope.close(navigator: CallScreenNavigator) = launch(dispatchers.main) {
         navigator.close()
-        widgetDriver?.close()
     }
 }

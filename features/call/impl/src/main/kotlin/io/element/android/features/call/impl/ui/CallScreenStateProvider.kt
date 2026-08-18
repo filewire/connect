@@ -30,6 +30,7 @@ internal fun aCallScreenState(
     callError: CallScreenError? = null,
     userAgent: String = "",
     isCallActive: Boolean = true,
+    webViewInstanceKey: Int = 0,
     eventSink: (CallScreenEvent) -> Unit = {},
 ): CallScreenState {
     return CallScreenState(
@@ -37,6 +38,7 @@ internal fun aCallScreenState(
         callError = callError,
         userAgent = userAgent,
         isCallActive = isCallActive,
+        webViewInstanceKey = webViewInstanceKey,
         eventSink = eventSink,
     )
 }

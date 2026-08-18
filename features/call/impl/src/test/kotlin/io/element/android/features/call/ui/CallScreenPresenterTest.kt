@@ -14,10 +14,13 @@ import app.cash.turbine.test
 import com.google.common.truth.Truth.assertThat
 import im.vector.app.features.analytics.plan.MobileScreen
 import io.element.android.features.call.api.CallData
+import io.element.android.features.call.impl.notifications.aCallNotificationData
 import io.element.android.features.call.impl.ui.CallScreenError
 import io.element.android.features.call.impl.ui.CallScreenEvent
 import io.element.android.features.call.impl.ui.CallScreenNavigator
 import io.element.android.features.call.impl.ui.CallScreenPresenter
+import io.element.android.features.call.impl.utils.ActiveCall
+import io.element.android.features.call.impl.utils.CallState
 import io.element.android.features.call.impl.utils.WidgetMessageSerializer
 import io.element.android.features.call.utils.FakeActiveCallManager
 import io.element.android.features.call.utils.FakeCallWidgetProvider
@@ -95,6 +98,32 @@ class CallScreenPresenterTest {
     }
 
     @Test
+    fun `present - answering incoming ringing call uses JOIN_EXISTING`() = runTest {
+        val widgetDriver = FakeMatrixWidgetDriver()
+        val widgetProvider = FakeCallWidgetProvider(widgetDriver)
+        val callData = CallData(A_SESSION_ID, A_ROOM_ID, false)
+        val activeCallManager = FakeActiveCallManager()
+        activeCallManager.setActiveCall(
+            ActiveCall(
+                callData = callData,
+                callState = CallState.Ringing(aCallNotificationData()),
+            )
+        )
+        val presenter = createCallScreenPresenter(
+            callData = callData,
+            widgetDriver = widgetDriver,
+            widgetProvider = widgetProvider,
+            screenTracker = FakeScreenTracker {},
+            activeCallManager = activeCallManager,
+        )
+        presenter.test {
+            advanceTimeBy(1.seconds)
+            assertThat(widgetProvider.forceStartNewCallArgs).containsExactly(false)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
     fun `present - set message interceptor, send and receive messages`() = runTest {
         val widgetDriver = FakeMatrixWidgetDriver()
         val presenter = createCallScreenPresenter(
@@ -144,11 +173,11 @@ class CallScreenPresenterTest {
 
             initialState.eventSink(CallScreenEvent.Hangup)
 
-            // Min grace + MatrixRTC poll (fake manager returns immediately)
-            advanceTimeBy(2.seconds)
             runCurrent()
 
             assertThat(navigator.closeCalled).isTrue()
+            advanceTimeBy(2.seconds)
+            runCurrent()
             assertThat(widgetDriver.closeCalledCount).isEqualTo(1)
 
             cancelAndIgnoreRemainingEvents()
@@ -177,11 +206,11 @@ class CallScreenPresenterTest {
 
             messageInterceptor.givenInterceptedMessage("""{"action":"io.element.close","api":"fromWidget","widgetId":"1","requestId":"1"}""")
 
-            // Min grace + MatrixRTC poll (fake manager returns immediately)
-            advanceTimeBy(2.seconds)
             runCurrent()
 
             assertThat(navigator.closeCalled).isTrue()
+            advanceTimeBy(2.seconds)
+            runCurrent()
             assertThat(widgetDriver.closeCalledCount).isEqualTo(1)
 
             cancelAndIgnoreRemainingEvents()
@@ -245,18 +274,15 @@ class CallScreenPresenterTest {
         val messageInterceptor = FakeWidgetMessageInterceptor()
         presenter.test {
             advanceTimeBy(1.seconds)
-            skipItems(2)
             val initialState = awaitItem()
             assertThat(widgetProvider.forceStartNewCallArgs).containsExactly(true)
             initialState.eventSink(CallScreenEvent.SetupMessageChannels(messageInterceptor))
-            skipItems(2)
 
             initialState.eventSink(CallScreenEvent.Retry)
             advanceTimeBy(1.seconds)
-            skipItems(1)
-
             assertThat(widgetProvider.forceStartNewCallArgs).containsExactly(true, true)
 
+            initialState.eventSink(CallScreenEvent.SetupMessageChannels(messageInterceptor))
             messageInterceptor.givenInterceptedMessage(
                 """
                     {
@@ -267,7 +293,7 @@ class CallScreenPresenterTest {
                     }
                 """.trimIndent()
             )
-            skipItems(1)
+            advanceTimeBy(1.seconds)
             assertThat(forceStart).isFalse()
 
             cancelAndIgnoreRemainingEvents()

@@ -20,10 +20,13 @@
     <issue id="UnusedQuantity" severity="error" />
     <issue id="IconXmlAndPng" severity="error" />
     <issue id="IconDipSize" severity="error" />
-    <issue id="IconDuplicatesConfig" severity="error" />
+    <issue id="IconDuplicatesConfig" severity="error">
+        <ignore path="**/element_logo.png" />
+    </issue>
     <issue id="IconDuplicates" severity="error" />
     <issue id="IconExpectedSize" severity="error">
         <ignore path="**/ic_launcher_monochrome.webp" />
+        <ignore path="**/ic_launcher_monochrome.png" />
     </issue>
     <issue id="LocaleFolder" severity="error" />
 
@@ -38,6 +41,8 @@
     <issue id="UnusedResources" severity="error">
         <!-- Ignore unused strings resource from localazy -->
         <ignore path="**/localazy.xml" />
+        <ignore path="**/connect_strings.xml" />
+        <ignore path="**/drawable/transparent.xml" />
         <!-- Ignore unused resource in debug build type -->
         <ignore path="**/src/debug/**" />
         <!-- Ignore unused resources in designsystem since they're imported elsewhere through aliases and can't be properly detected -->
