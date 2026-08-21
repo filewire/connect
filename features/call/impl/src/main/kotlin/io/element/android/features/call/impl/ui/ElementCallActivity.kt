@@ -240,6 +240,16 @@ class ElementCallActivity :
         val callData = intent?.let {
             IntentCompat.getParcelableExtra(intent, DefaultElementCallEntryPoint.EXTRA_CALL_TYPE, CallData::class.java)
         }
+        // If the active call is Ringing for this room, mark as answering so
+        // CallScreenPresenter uses JOIN_EXISTING (covers notification Answer button).
+        if (callData != null) {
+            activeCallManager.activeCall.value?.let { active ->
+                if (active.callData.roomId == callData.roomId && active.callState is CallState.Ringing) {
+                    Timber.tag(loggerTag.value).d("Active call is Ringing for this room; marking JOIN")
+                    activeCallManager.markAnsweringIncoming(callData.roomId)
+                }
+            }
+        }
         val currentCallData = webViewTarget.value
         if (currentCallData == null) {
             if (callData == null) {

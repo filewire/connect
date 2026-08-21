@@ -43,7 +43,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
@@ -195,10 +194,21 @@ class DefaultActiveCallManager(
         mutex.withLock {
             val remainingMs = notificationData.expirationTimestamp - systemClock.epochMillis()
             val ringDuration = if (remainingMs < 0) {
-                // Push can arrive after MSC4075 lifetime; the remote call is often still live
-                // (Join in the room). Dropping the ring left locked phones silent.
+                // Push arrived after MSC4075 lifetime. Check whether the call is still live
+                // before ringing — if it ended already, show a missed-call notification instead.
+                val roomHasCall = matrixClientProvider.getOrRestore(notificationData.sessionId).getOrNull()
+                    ?.getRoom(notificationData.roomId)
+                    ?.info()?.hasRoomCall == true
+                if (!roomHasCall) {
+                    Timber.tag(tag).w(
+                        "Incoming RING past expiration by %dms and room has no active call; showing missed call",
+                        -remainingMs,
+                    )
+                    displayMissedCallNotification(notificationData)
+                    return
+                }
                 Timber.tag(tag).w(
-                    "Incoming RING past expiration by %dms; ringing anyway for %ds",
+                    "Incoming RING past expiration by %dms but room call still live; ringing for %ds",
                     -remainingMs,
                     ElementCallConfig.RINGING_CALL_DURATION_SECONDS,
                 )
@@ -553,8 +563,8 @@ class DefaultActiveCallManager(
             }
             // We only want to check if the room active call status changes
             .distinctUntilChanged()
-            // Skip the first one, we're not interested in it (if the check below passes, it had to be active anyway)
-            .drop(1)
+            // No drop(1): late FCM can start a ring after the call already ended,
+            // so the initial hasRoomCall=false must cancel the ring immediately.
             .onEach { (roomHasActiveCall, userIsInTheCall) ->
                 if (!roomHasActiveCall) {
                     // The call was cancelled
